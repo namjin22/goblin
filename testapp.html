@@ -76,8 +76,8 @@
 
 <!-- [1] 지금 상태 -->
 <section class="screen on" id="s1">
-  <img class="cam" id="cam" src="/camera/stream" alt="웹캠 미리보기"
-       onerror="this.style.display='none'">
+  <img class="cam" id="cam" alt="웹캠 미리보기"
+       onerror="this.style.display='none'" onload="this.style.display='block'">
   <div class="card good" id="card">
     <div class="crop" id="crop">확인 중</div>
     <div class="msg" id="msg">불러오는 중…</div>
@@ -141,6 +141,12 @@ async function poll() {
     const r = await fetch(API + '/api/state', { cache: 'no-store' });
     const d = await r.json();
     document.getElementById('offline').style.display = 'none';
+
+    // 카메라: 스트림 연결을 계속 열어두지 않고, 매번 새 스냅샷을 요청한다
+    // (연결 하나를 계속 물고 있으면 모바일 브라우저 동시연결 한도 때문에
+    //  위 /api/state 폴링이 막힐 수 있어서 이 방식으로 바꿨다).
+    document.getElementById('cam').src =
+      API + '/camera/snapshot.jpg?t=' + Date.now();
 
     document.getElementById('msg').textContent = d.message;
     document.getElementById('crop').textContent = d.crop_name;

@@ -10,7 +10,7 @@
   GET  /api/history        지난 기록   (앱 [3] 지난 기록 화면)
   GET  /api/growth_photos  주간 성장 사진 목록
   GET  /api/health         서버 살아있는지 확인
-  GET  /camera/stream      실시간 웹캠 미리보기 (MJPEG, <img src="...">로 바로 씀)
+  GET  /camera/snapshot.jpg  웹캠 최신 프레임 한 장 (앱이 주기적으로 다시 요청해서 "실시간처럼" 보여줄 것)
 """
 
 import os
@@ -100,24 +100,21 @@ def create_app(store):
     def health():
         return jsonify({"ok": True})
 
-    @app.route("/camera/stream")
-    def camera_stream():
-        """실시간 웹캠 미리보기 (MJPEG). <img src="/camera/stream">로 그대로 쓸 수 있다.
+    @app.route("/camera/snapshot.jpg")
+    def camera_snapshot():
+        """실시간 웹캠 미리보기용 스냅샷 한 장.
 
-        controller.Controller.update_camera_frame()이 메인 루프에서 0.5초마다
-        갱신해둔 최신 프레임(store.get_camera_frame())을 읽기만 한다 - 이 함수는
-        Flask 스레드에서 돌아가므로 웹캠을 직접 만지지 않는다.
+        [설계] 처음엔 MJPEG로 연결을 계속 열어두는 스트림(/camera/stream)으로
+        만들었는데, Flask 개발서버는 이런 상시연결에 약해서 그 연결 하나가
+        모바일 브라우저의 동시연결 한도(보통 6개)를 계속 차지해 /api/state
+        폴링이 막히는 문제가 있었다("대시보드가 멈춘 것처럼 보임"의 원인).
+        그래서 요청마다 바로 끝나는 스냅샷 한 장으로 바꾸고, 앱이 주기적으로
+        다시 요청하는 방식으로 "실시간처럼" 보이게 한다.
         """
-        def generate():
-            while True:
-                frame = store.get_camera_frame()
-                if frame is not None:
-                    yield (b"--frame\r\n"
-                           b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
-                time.sleep(0.3)
-
-        return Response(
-            generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+        frame = store.get_camera_frame()
+        if frame is None:
+            return "카메라 프레임 없음", 503
+        return Response(frame, mimetype="image/jpeg")
 
     @app.route("/api/state")
     def get_state():
