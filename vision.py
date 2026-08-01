@@ -78,6 +78,10 @@ class Vision:
         if self.cap:
             self.cap.release()
 
+    def save_snapshot(self, frame, path):
+        """성장 기록용 사진 저장. 성공하면 True."""
+        return bool(self.cv2.imwrite(path, frame))
+
     # ------------------------------------------------------ 토양 분석
     def _soil_vs(self, frame):
         """흙 영역의 평균 명도(V)와 채도(S)."""
@@ -191,6 +195,10 @@ class MockVision:
 
     def calibrate(self, which):
         return None
+
+    def save_snapshot(self, frame, path):
+        """웹캠이 없는 모의 모드라 실제 사진은 저장하지 않는다."""
+        return False
 
 
 def build_vision(mock=False, cam_index=0, crop="lettuce"):

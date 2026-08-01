@@ -147,6 +147,17 @@ ToF를 쓰지 않으므로 **6초마다 자동으로 촬영**한다 (`SCAN_INTER
 
 최신순. `detail`이 그대로 보여줄 수 있는 문장이다.
 
+### GET /api/growth_photos — 성장 사진
+
+```json
+{ "items": [ { "week": 0, "crop_name": "상추", "taken_at": 1785508793.3,
+               "url": "/growth_photos/lettuce_week0_1785508793.jpg" } ] }
+```
+
+지금 인식 중인 작물의 것만 준다(작물이 바뀌면 새로 시작). `url`은 이 서버 기준
+상대 경로이므로 앱에서 `baseUrl + url`로 이어붙여 이미지를 불러오면 된다.
+일주일에 한 장씩만 쌓인다 — 실측 크기가 아니라 시간 경과 기준 스냅샷이다.
+
 ---
 
 ## 파일 구조
@@ -162,6 +173,7 @@ ToF를 쓰지 않으므로 **6초마다 자동으로 촬영**한다 (`SCAN_INTER
 | `controller.py` | 판단 로직 + 논블로킹 액추에이터 |
 | `server.py` | Flask API. 하드웨어 접근 금지 |
 | `main.py` | 메인 루프 |
+| `growth_photos/` | 주간 성장 사진 저장 위치. 자동 생성, git에는 안 올라감 |
 
 ---
 

@@ -26,6 +26,7 @@ class Store:
         self._lock = threading.Lock()
         self._commands = deque()
         self._history = deque(maxlen=history_limit)
+        self._growth_photos = deque(maxlen=52)   # 1년치 주간 사진이면 충분
 
         self._state = {
             # 센서
@@ -109,3 +110,23 @@ class Store:
         with self._lock:
             items = list(self._history)
         return items[-limit:][::-1]     # 최신순
+
+    # ---------------------------------------------------------- 성장 사진
+    def add_growth_photo(self, crop_key, crop_name, week_index, filename):
+        """일주일 간격으로 찍은 성장 기록 사진을 남긴다."""
+        with self._lock:
+            self._growth_photos.append({
+                "crop_key": crop_key,
+                "crop_name": crop_name,
+                "week": week_index,
+                "filename": filename,
+                "taken_at": time.time(),
+            })
+
+    def growth_photos(self, crop_key=None):
+        """주차 오름차순. crop_key를 주면 지금 작물 것만 돌려준다."""
+        with self._lock:
+            items = list(self._growth_photos)
+        if crop_key is not None:
+            items = [p for p in items if p["crop_key"] == crop_key]
+        return sorted(items, key=lambda p: p["week"])

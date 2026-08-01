@@ -57,6 +57,20 @@ class FarmApi {
       return null;
     }
   }
+
+  static Future<List<GrowthPhoto>?> fetchGrowthPhotos() async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/api/growth_photos')).timeout(_timeout);
+      if (res.statusCode != 200) return null;
+      final items = (jsonDecode(res.body) as Map<String, dynamic>)['items'] as List;
+      return items.map((e) => GrowthPhoto.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// `url`(서버 기준 상대 경로)을 절대 주소로 바꾼다.
+  static String photoUrl(String url) => '$baseUrl$url';
 }
 
 class CommandResult {

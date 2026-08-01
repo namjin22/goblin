@@ -18,6 +18,7 @@
   * ToF, Dial, IMU, Joystick 미사용
 """
 
+import os
 import time
 
 from profiles import get_profile
@@ -29,6 +30,9 @@ SPRINKLER_DURATION = 4.0   # 스프링클러 회전 시간(초)
 SPRINKLER_SPEED = 60
 
 SCAN_INTERVAL = 6.0        # 몇 초마다 작물·흙을 촬영할지
+
+GROWTH_PHOTO_DIR = "growth_photos"
+GROWTH_PHOTO_INTERVAL = 7 * 24 * 3600.0   # 1주일마다 성장 사진 한 장
 
 BEEP_DURATION = 0.4        # 경고음 길이. 이 시간 뒤 자동으로 끈다
 
@@ -70,6 +74,7 @@ class Controller:
         self._on_finish = None
 
         self._last_scan = 0.0
+        self._last_growth_week = {}   # crop_key -> 마지막으로 사진 남긴 주차
 
         self._beep_until = 0.0
         self._last_level = None
@@ -219,13 +224,16 @@ class Controller:
         dryness = self.vision.soil_dryness(frame)
 
         updates = {}
+        crop_started_at = self.store.get("crop_started_at")
         if crop_key:
             profile = get_profile(crop_key)
             # 작물이 바뀐 경우에만 기록을 남기고, 성장 일수 기준(첫 인식 시각)을 새로 잡는다.
             if crop_key != self.store.get("crop_key"):
                 self.store.add_history(
                     "scan", "%s을(를) 확인했습니다" % profile["name"])
-                updates["crop_started_at"] = time.time()
+                crop_started_at = time.time()
+                updates["crop_started_at"] = crop_started_at
+                self._last_growth_week.pop(crop_key, None)
             updates["crop_key"] = crop_key
             updates["crop_name"] = profile["name"]
             updates["profile_name"] = profile["name"]
@@ -233,6 +241,25 @@ class Controller:
             updates["dryness"] = round(dryness, 1)
         if updates:
             self.store.update(**updates)
+
+        if crop_key and crop_started_at:
+            self._maybe_save_growth_photo(crop_key, profile["name"], frame, crop_started_at)
+
+    def _maybe_save_growth_photo(self, crop_key, crop_name, frame, crop_started_at):
+        """일주일에 한 번, 지금 작물의 성장 기록 사진을 남긴다."""
+        week_index = int((time.time() - crop_started_at) // GROWTH_PHOTO_INTERVAL)
+        if self._last_growth_week.get(crop_key) == week_index:
+            return
+
+        os.makedirs(GROWTH_PHOTO_DIR, exist_ok=True)
+        filename = "%s_week%d_%d.jpg" % (crop_key, week_index, int(time.time()))
+        path = os.path.join(GROWTH_PHOTO_DIR, filename)
+
+        if self.vision.save_snapshot(frame, path):
+            self.store.add_growth_photo(crop_key, crop_name, week_index, filename)
+            self.store.add_history(
+                "growth_photo", "%s주차 성장 사진을 남겼습니다" % (week_index + 1))
+        self._last_growth_week[crop_key] = week_index
 
     # ------------------------------------------------------ 판단
     def decide(self, snap):

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../models/farm_status.dart';
 import '../../services/farm_api.dart';
 import '../../theme/app_colors.dart';
-import '../../widgets/bottom_nav_bar.dart';
 
 /// server.py(FarmApi)에 닿지 못할 때(오프라인 개발 중) 보여줄 대체 데이터.
 List<HistoryItem> _buildDemoItems() {
@@ -29,10 +28,7 @@ String _emojiFor(String event) => switch (event) {
 /// 화면[3] 지난 기록 - server.py `/api/history`를 받아 "물을 주었습니다" 수준의
 /// 문장형 요약으로 보여준다. 오늘/이번 주는 서버가 나눠주지 않으므로 timestamp로 직접 나눈다.
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key, required this.navIndex, required this.onNavChanged});
-
-  final int navIndex;
-  final ValueChanged<int> onNavChanged;
+  const HistoryScreen({super.key});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -68,39 +64,34 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final items = _visibleItems;
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            children: [
-              const SizedBox(height: 8),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('지난 기록', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.ink)),
-              ),
-              const SizedBox(height: 16),
-              _PeriodToggle(
-                labels: _periods,
-                selected: _period,
-                onChanged: (i) => setState(() => _period = i),
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: items.isEmpty
-                    ? const Center(
-                        child: Text('아직 기록이 없어요', style: TextStyle(color: AppColors.sub, fontSize: 16, fontWeight: FontWeight.w600)),
-                      )
-                    : ListView.separated(
-                        itemCount: items.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 12),
-                        itemBuilder: (context, i) => _HistoryRow(item: items[i]),
-                      ),
-              ),
-              BottomNavBar(index: widget.navIndex, onChanged: widget.onNavChanged, light: true),
-            ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        children: [
+          const SizedBox(height: 8),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text('지난 기록', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.ink)),
           ),
-        ),
+          const SizedBox(height: 16),
+          _PeriodToggle(
+            labels: _periods,
+            selected: _period,
+            onChanged: (i) => setState(() => _period = i),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: items.isEmpty
+                ? const Center(
+                    child: Text('아직 기록이 없어요', style: TextStyle(color: AppColors.sub, fontSize: 16, fontWeight: FontWeight.w600)),
+                  )
+                : ListView.separated(
+                    itemCount: items.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (context, i) => _HistoryRow(item: items[i]),
+                  ),
+          ),
+        ],
       ),
     );
   }

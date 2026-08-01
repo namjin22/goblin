@@ -5,18 +5,20 @@
        상태를 읽고, 명령을 큐에 넣을 뿐이다.
 
 앱 담당 팀원에게 알려줄 API
-  GET  /api/state    현재 상태 (앱 [1] 지금 상태 화면)
-  POST /api/command  수동 조작   (앱 [2] 직접 하기 화면)
-  GET  /api/history  지난 기록   (앱 [3] 지난 기록 화면)
-  GET  /api/health   서버 살아있는지 확인
+  GET  /api/state          현재 상태 (앱 [1] 지금 상태 화면)
+  POST /api/command        수동 조작   (앱 [2] 직접 하기 화면)
+  GET  /api/history        지난 기록   (앱 [3] 지난 기록 화면)
+  GET  /api/growth_photos  주간 성장 사진 목록
+  GET  /api/health         서버 살아있는지 확인
 """
 
 import os
 import threading
 import time
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, jsonify, request, send_from_directory
 
+from controller import GROWTH_PHOTO_DIR
 from profiles import get_profile
 from state import VALID_COMMANDS
 
@@ -157,6 +159,28 @@ def create_app(store):
         """앱 [3] 지난 기록 화면용."""
         limit = request.args.get("limit", default=50, type=int)
         return jsonify({"items": store.history(limit=limit)})
+
+    @app.route("/api/growth_photos")
+    def get_growth_photos():
+        """지금 인식 중인 작물의 주간 성장 사진 목록.
+
+        웹캠으로 실제 크기를 잰 게 아니라 controller.py가 일주일에 한 번
+        찍어 남겨둔 스냅샷이다(controller._maybe_save_growth_photo 참고).
+        """
+        crop_key = store.get("crop_key")
+        photos = store.growth_photos(crop_key=crop_key)
+        items = [{
+            "week": p["week"],
+            "crop_name": p["crop_name"],
+            "taken_at": p["taken_at"],
+            "url": "/growth_photos/%s" % p["filename"],
+        } for p in photos]
+        return jsonify({"items": items})
+
+    @app.route("/growth_photos/<path:filename>")
+    def get_growth_photo_file(filename):
+        directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), GROWTH_PHOTO_DIR)
+        return send_from_directory(directory, filename)
 
     return app
 

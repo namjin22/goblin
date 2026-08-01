@@ -100,3 +100,20 @@ class HistoryItem {
         detail: json['detail'] as String? ?? '',
       );
 }
+
+/// server.py `/api/growth_photos`의 항목 하나 — 일주일에 한 번 남긴 성장 스냅샷.
+class GrowthPhoto {
+  const GrowthPhoto({required this.week, required this.cropName, required this.url});
+
+  final int week;
+  final String cropName;
+
+  /// 서버 기준 상대 경로(예: `/growth_photos/xxx.jpg`) — FarmApi.baseUrl과 이어붙여야 한다.
+  final String url;
+
+  factory GrowthPhoto.fromJson(Map<String, dynamic> json) => GrowthPhoto(
+        week: json['week'] as int,
+        cropName: json['crop_name'] as String? ?? '',
+        url: json['url'] as String,
+      );
+}
