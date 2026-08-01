@@ -211,6 +211,6 @@ motors[SPRINKLER_MOTOR_INDEX] = 스프링클러 (모형. 실제로 물은 안 �
 
 2026-08-01 실측 인덱스: `VENT_MOTOR_A_INDEX=2`, `VENT_MOTOR_B_INDEX=0`, `SPRINKLER_MOTOR_INDEX=1` (장비마다 다를 수 있으니 `python hwtest.py --motor`로 매번 재확인할 것).
 
-`VENT_A_SIGN`/`VENT_B_SIGN`/`VENT_ROTATION_DEG`는 아직 실물로 확정 전 - `hwtest.py --motor`의 대화형 보정으로 결정한다. "닫힘=절대각 0"이 아니라 프로그램이 시작될 때(문이 실제로 닫힌 상태에서) 각 모터의 현재 각도를 읽어 그걸 닫힘 기준으로 삼는다(`ModiHardware.calibrate_vent_home()`).
+환기창은 절대각이 아니라 **상대회전**(`append_angle`)으로 움직인다 - 열기=`+VENT_A_SIGN*VENT_ROTATION_DEG`, 닫기=그 반대. 현재 확정값: `VENT_A_SIGN=-1`, `VENT_B_SIGN=1`, `VENT_ROTATION_DEG=120`. 부호가 실물과 안 맞으면 `main.py` 실행 시 자동으로 뜨는 확인 절차에서 바로 고칠 수 있다(`hwtest.py --motor`에도 같은 보정 도구 있음). 열기/닫기가 항상 쌍으로 맞아야 하므로 `controller.py`가 "닫혀있을 때만 열기/열려있을 때만 닫기"로 막아둔다 - 두 번 연속 열면 위치가 어긋난다.
 
 환기창 두 모터 중 하나라도 없으면 연결 자체가 실패한다(`HardwareError`). 스프링클러 모터만 없으면 경고만 뜨고 나머지는 정상 동작한다.
