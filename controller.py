@@ -371,6 +371,12 @@ class Controller:
         if dry is not None and dry > profile["dry_limit"]:
             return "alert", "흙이 말랐어요. 물을 줄까요?", "물 필요", "water"
 
+        # 작물이 아직 인식 안 됐으면(DEFAULT_PROFILE, name="확인 중") "확인
+        # 중가 잘 자라고 있어요" 같은 말이 안 되는 문장이 나간다 - 정직하게
+        # "아직 안 보인다"고 말할 것.
+        if snap.get("crop_key") is None:
+            return "good", "아직 작물이 안 보여요", "대기 중", None
+
         return "good", "%s가 잘 자라고 있어요" % crop, "좋아요", None
 
     # ------------------------------------------------------ 출력
