@@ -54,7 +54,6 @@ class Store:
             "short": "준비중",
             "profile_name": "확인 중",
             # 액추에이터
-            "vent_angle": 0,
             "vent_open": False,
             "sprinkler_on": False,
             "light_on": False,        # 생장등

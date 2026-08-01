@@ -60,8 +60,8 @@ def connect():
     if missing:
         print("\n  [경고] 인식 안 된 모듈:", ", ".join(missing))
         print("         케이블을 다시 꽂고 python -m modi_plus --inspect 확인")
-    if counts["motor"] < 2:
-        print("\n  [경고] 모터가 2개여야 한다 (환기창 + 스프링클러)")
+    if counts["motor"] < 3:
+        print("\n  [경고] 모터가 3개여야 한다 (환기창 모터A + 환기창 모터B + 스프링클러)")
 
     return bundle, counts
 
@@ -141,14 +141,15 @@ def test_sensors(bundle, results):
 
 
 def test_motors(bundle, results):
-    line("4. 모터 - 어느 쪽이 환기창인지 확인")
+    line("4. 모터 - 어느 게 환기창 A/B, 어느 게 스프링클러인지 확인")
 
     motors = bundle.motors
     if not motors:
         print("  모터가 없다.")
         return
 
-    print("  모터를 하나씩 돌린다. 무엇이 움직이는지 잘 볼 것.\n")
+    print("  모터를 하나씩 돌린다. 무엇이 움직이는지 잘 볼 것.")
+    print("  환기창은 모터가 2개(A, B)다 - 둘이 반대 방향으로 함께 움직여야 문이 열린다.\n")
 
     roles = {}
     for i, motor in enumerate(motors):
@@ -158,37 +159,44 @@ def test_motors(bundle, results):
         motor.speed = 0
         time.sleep(0.5)
 
-        ans = input("  >> 무엇이 움직였나? (1=환기창, 2=스프링클러, 0=아무것도) ")
+        ans = input("  >> 무엇이 움직였나? (1=환기창 모터A, 2=환기창 모터B, 3=스프링클러, 0=아무것도) ")
         ans = ans.strip()
         if ans == "1":
-            roles["vent"] = i
+            roles["vent_a"] = i
         elif ans == "2":
+            roles["vent_b"] = i
+        elif ans == "3":
             roles["sprinkler"] = i
 
     print()
-    if "vent" in roles and "sprinkler" in roles:
+    if "vent_a" in roles and "vent_b" in roles and "sprinkler" in roles:
         print("  확인 결과:")
-        print("    환기창    = motors[%d]" % roles["vent"])
-        print("    스프링클러 = motors[%d]" % roles["sprinkler"])
+        print("    환기창 모터A = motors[%d]" % roles["vent_a"])
+        print("    환기창 모터B = motors[%d]" % roles["vent_b"])
+        print("    스프링클러   = motors[%d]" % roles["sprinkler"])
         print()
-        if roles["vent"] == 0 and roles["sprinkler"] == 1:
+        if roles["vent_a"] == 0 and roles["vent_b"] == 1 and roles["sprinkler"] == 2:
             print("  hardware.py 기본값 그대로 쓰면 된다. 수정 불필요.")
         else:
             print("  [중요] hardware.py 위쪽을 아래처럼 고칠 것:")
-            print("      VENT_MOTOR_INDEX = %d" % roles["vent"])
+            print("      VENT_MOTOR_A_INDEX = %d" % roles["vent_a"])
+            print("      VENT_MOTOR_B_INDEX = %d" % roles["vent_b"])
             print("      SPRINKLER_MOTOR_INDEX = %d" % roles["sprinkler"])
         results["Motor"] = True
     else:
         print("  모터 역할을 특정하지 못했다. 다시 실행해볼 것.")
         results["Motor"] = False
 
-    # 환기창 각도 제어도 확인
-    if "vent" in roles:
-        vent = motors[roles["vent"]]
-        print("\n  환기창 각도 제어 확인: 0도 -> 90도 -> 0도")
-        for angle in (0, 90, 0):
-            vent.angle = angle, 50
-            print("    %d도" % angle)
+    # 환기창 두 모터가 반대 방향으로 함께 움직이는지 확인
+    if "vent_a" in roles and "vent_b" in roles:
+        vent_a = motors[roles["vent_a"]]
+        vent_b = motors[roles["vent_b"]]
+        print("\n  환기창 각도 제어 확인: 0도 -> (A -250 / B +250) -> 0도")
+        print("  (블록코딩에서 확인된 값. pymodi_plus에서도 절대각으로 동작하는지 확인)")
+        for label, a_angle, b_angle in [("열기", -250, 250), ("닫기", 0, 0)]:
+            vent_a.angle = a_angle, 50
+            vent_b.angle = b_angle, 50
+            print("    %s: A=%d도 B=%d도" % (label, a_angle, b_angle))
             time.sleep(2.5)
         results["Vent angle"] = ask("환기창이 열렸다 닫혔나?")
 

@@ -24,9 +24,15 @@ class HardwareError(Exception):
 #        pymodi-plus는 모듈이 인식된 순서대로 리스트를 만들기 때문에,
 #        케이블을 다시 꽂으면 순서가 바뀔 수 있다.
 #        hwtest.py 로 어느 모터가 어느 것인지 확인한 뒤,
-#        다르면 아래 두 숫자를 서로 바꾼다.
-VENT_MOTOR_INDEX = 0
-SPRINKLER_MOTOR_INDEX = 1
+#        다르면 아래 숫자들을 실제 배치에 맞게 바꾼다.
+#
+# [환기창은 모터가 2개다] 모터A와 모터B가 서로 반대 방향으로 함께 돌아야
+# 문이 열리고 닫힌다. 블록코딩으로 확인된 값: 열 때 모터A -250도(반시계),
+# 모터B +250도(시계). 닫을 때는 둘 다 0도로 되돌린다(방향 반대로 250도).
+VENT_MOTOR_A_INDEX = 0
+VENT_MOTOR_B_INDEX = 1
+SPRINKLER_MOTOR_INDEX = 2
+VENT_ROTATION_DEG = 250
 
 
 # --------------------------------------------------------- 공통 인터페이스
@@ -69,8 +75,12 @@ class BaseHardware:
     def speaker_off(self):
         raise NotImplementedError
 
-    def set_vent(self, angle, speed=50):
-        """환기창 모터를 목표 각도로. 즉시 반환한다(대기하지 않음)."""
+    def open_vent(self, speed=50):
+        """환기창을 연다. 즉시 반환한다(대기하지 않음)."""
+        raise NotImplementedError
+
+    def close_vent(self, speed=50):
+        """환기창을 닫는다. 즉시 반환한다(대기하지 않음)."""
         raise NotImplementedError
 
     def set_sprinkler(self, speed):
@@ -82,9 +92,10 @@ class BaseHardware:
 class ModiHardware(BaseHardware):
     """실제 MODI Plus 연결.
 
-    모터 배치
-      motors[0] = 환기창
-      motors[1] = 스프링클러 (급수 표현용, 실제로 물은 나오지 않음)
+    모터 배치 (물리적으로 모터 모듈 3개)
+      motors[VENT_MOTOR_A_INDEX] = 환기창 모터A (반시계로 열림)
+      motors[VENT_MOTOR_B_INDEX] = 환기창 모터B (모터A와 반대 방향, 시계로 열림)
+      motors[SPRINKLER_MOTOR_INDEX] = 스프링클러 (급수 표현용, 실제로 물은 나오지 않음)
     """
 
     def __init__(self, conn_type=None, network_uuid=None):
@@ -93,7 +104,8 @@ class ModiHardware(BaseHardware):
         self.bundle = None
         self.env = self.tof = self.dial = self.button = None
         self.led = self.display = self.speaker = None
-        self.vent_motor = None
+        self.vent_motor_a = None
+        self.vent_motor_b = None
         self.sprinkler_motor = None
 
     def connect(self):
@@ -140,17 +152,20 @@ class ModiHardware(BaseHardware):
             print("[HW] Dial 없음 - 하드웨어 수동 조절은 비활성. 앱으로는 조작 가능.")
 
         motors = self.bundle.motors
-        if len(motors) > VENT_MOTOR_INDEX:
-            self.vent_motor = motors[VENT_MOTOR_INDEX]
+        # 환기창은 모터 2개가 함께(반대 방향으로) 움직여야 열리고 닫힌다.
+        # 둘 중 하나라도 없으면 문이 반만 움직이거나 걸릴 수 있어 아예 진행하지 않는다.
+        if len(motors) > max(VENT_MOTOR_A_INDEX, VENT_MOTOR_B_INDEX):
+            self.vent_motor_a = motors[VENT_MOTOR_A_INDEX]
+            self.vent_motor_b = motors[VENT_MOTOR_B_INDEX]
         else:
-            raise HardwareError("환기창 모터를 찾을 수 없다. 모터 연결을 확인할 것.")
+            raise HardwareError(
+                "환기창 모터 2개(A, B)를 모두 찾을 수 없다. 모터 연결을 확인할 것.")
 
-        # 스프링클러는 두 번째 모터. 없으면 경고만 하고 계속 진행한다.
+        # 스프링클러는 세 번째 모터. 없으면 경고만 하고 계속 진행한다.
         if len(motors) > SPRINKLER_MOTOR_INDEX:
             self.sprinkler_motor = motors[SPRINKLER_MOTOR_INDEX]
         else:
-            print("[HW] 경고: 모터가 %d개뿐이다. 스프링클러 동작은 생략된다."
-                  % len(motors))
+            print("[HW] 경고: 스프링클러 모터가 없다. 급수 동작은 생략된다.")
 
         # 센서 첫 값은 0으로 나온다. 반드시 대기.
         time.sleep(1)
@@ -205,8 +220,17 @@ class ModiHardware(BaseHardware):
     def speaker_off(self):
         self.speaker.reset()
 
-    def set_vent(self, angle, speed=50):
-        self.vent_motor.angle = angle, speed
+    def open_vent(self, speed=50):
+        # 블록코딩 테스트로 확인된 값: 모터A -250도(반시계) / 모터B +250도(시계).
+        # [주의] pymodi_plus의 .angle이 절대 목표각이라고 가정한다(대회장에서
+        # 실물로 다시 확인할 것 - 혹시 상대회전이면 이 값이 안 맞을 수 있다).
+        self.vent_motor_a.angle = -VENT_ROTATION_DEG, speed
+        self.vent_motor_b.angle = VENT_ROTATION_DEG, speed
+
+    def close_vent(self, speed=50):
+        # 열 때와 반대 방향으로 같은 각도만큼 되돌아가 닫힌다.
+        self.vent_motor_a.angle = 0, speed
+        self.vent_motor_b.angle = 0, speed
 
     def set_sprinkler(self, speed):
         if self.sprinkler_motor:
@@ -223,7 +247,7 @@ class MockHardware(BaseHardware):
 
     def __init__(self):
         self.t0 = time.time()
-        self._vent_angle = 0
+        self._vent_open = False
         self._sprinkler = 0
         self._temp = 24.0
         self._humidity = 55.0
@@ -239,7 +263,7 @@ class MockHardware(BaseHardware):
         dt = now - self._last
         self._last = now
         # 환기창이 열려 있으면 식고, 닫혀 있으면 서서히 더워진다.
-        if self._vent_angle > 45:
+        if self._vent_open:
             self._temp -= 0.8 * dt
         else:
             self._temp += 0.35 * dt
@@ -295,8 +319,11 @@ class MockHardware(BaseHardware):
     def speaker_off(self):
         pass
 
-    def set_vent(self, angle, speed=50):
-        self._vent_angle = angle
+    def open_vent(self, speed=50):
+        self._vent_open = True
+
+    def close_vent(self, speed=50):
+        self._vent_open = False
 
     def set_sprinkler(self, speed):
         if speed > 0 and self._sprinkler == 0:
