@@ -38,6 +38,10 @@ def parse_args():
     p.add_argument("--seconds", type=float, default=20.0, help="촬영 지속 시간(초)")
     p.add_argument("--interval", type=float, default=1.5,
                    help="촬영 간격(초). 브릭을 옮길 시간을 확보하려고 기본값을 넉넉히 잡았다")
+    p.add_argument("--no-preview", action="store_true",
+                   help="화면 창(cv2.imshow) 없이 콘솔 출력만으로 찍는다. "
+                        "삑 소리로 타이밍만 알려주고, 촬영 중에는 계속 천천히 "
+                        "브릭 각도를 바꿔가며 두면 된다.")
     return p.parse_args()
 
 
@@ -69,9 +73,14 @@ def main():
     print("=" * 50)
     print(" 클래스: %s" % args.crop)
     print(" %.0f초 동안 %.1f초마다 자동 촬영한다." % (args.seconds, args.interval))
-    print(" 미리보기 창의 카운트다운을 보고, 삑 소리가 나면 그 직후에")
-    print(" 브릭 위치/각도를 바꿀 것 (촬영 자체는 그 순간 이미 끝났다).")
-    print(" ESC로 중단, 초록 박스가 저장되는 영역이다.")
+    if args.no_preview:
+        print(" 화면 창 없음. 삑 소리가 날 때마다 한 장씩 저장된다.")
+        print(" 촬영 내내 브릭 각도/위치를 천천히 계속 바꿔줄 것.")
+        print(" Ctrl+C로 중단.")
+    else:
+        print(" 미리보기 창의 카운트다운을 보고, 삑 소리가 나면 그 직후에")
+        print(" 브릭 위치/각도를 바꿀 것 (촬영 자체는 그 순간 이미 끝났다).")
+        print(" ESC로 중단, 초록 박스가 저장되는 영역이다.")
     print("=" * 50)
 
     saved = 0
@@ -97,22 +106,23 @@ def main():
             until_next = args.interval - (now - last_capture)
             capturing_now = until_next <= 0
 
-            h, w = frame.shape[:2]
-            x1, y1, x2, y2 = CROP_ROI
-            preview = frame.copy()
-            box_color = (0, 0, 255) if now < flash_until else (0, 255, 0)  # 촬영 순간 빨강 플래시
-            cv2.rectangle(
-                preview, (int(w * x1), int(h * y1)), (int(w * x2), int(h * y2)),
-                box_color, 3)
-            remaining = args.seconds - (now - start)
-            cv2.putText(
-                preview, "%s  %d장  전체 %.0fs 남음" % (args.crop, saved, remaining),
-                (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-            countdown_text = "촬영!" if now < flash_until else "다음 촬영까지 %.1fs" % max(0.0, until_next)
-            cv2.putText(
-                preview, countdown_text, (10, h - 20),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.0, box_color, 2)
-            cv2.imshow("collect_data - ESC to stop", preview)
+            if not args.no_preview:
+                h, w = frame.shape[:2]
+                x1, y1, x2, y2 = CROP_ROI
+                preview = frame.copy()
+                box_color = (0, 0, 255) if now < flash_until else (0, 255, 0)  # 촬영 순간 빨강 플래시
+                cv2.rectangle(
+                    preview, (int(w * x1), int(h * y1)), (int(w * x2), int(h * y2)),
+                    box_color, 3)
+                remaining = args.seconds - (now - start)
+                cv2.putText(
+                    preview, "%s  %d장  전체 %.0fs 남음" % (args.crop, saved, remaining),
+                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                countdown_text = "촬영!" if now < flash_until else "다음 촬영까지 %.1fs" % max(0.0, until_next)
+                cv2.putText(
+                    preview, countdown_text, (10, h - 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, box_color, 2)
+                cv2.imshow("collect_data - ESC to stop", preview)
 
             if capturing_now:
                 last_capture = now
@@ -123,8 +133,11 @@ def main():
                 cv2.imwrite(path, crop_img)
                 saved += 1
                 _beep()
+                if args.no_preview:
+                    remaining = args.seconds - (now - start)
+                    print("  [%d장] 전체 %.0fs 남음" % (saved, remaining))
 
-            if cv2.waitKey(1) & 0xFF == 27:   # ESC
+            if not args.no_preview and cv2.waitKey(1) & 0xFF == 27:   # ESC
                 break
     except KeyboardInterrupt:
         pass
