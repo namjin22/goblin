@@ -8,7 +8,7 @@
 기록해두고 매 틱마다 확인하는 상태머신으로 만든다.
 
 [모듈 역할]
-  Env      온도 -> 환기 판단 / 조도 -> 생장등 판단
+  Env      온도 -> 환기 판단 / 조도 -> 생장등 판단 / 습도 -> 건조도(급수) 판단
   Button   창문 열기/닫기 토글 (이 일만 한다)
   LED      생장등 (조도가 낮으면 켠다)
   Display  짧은 단어 2줄
@@ -59,6 +59,23 @@ LIGHT_OFF = (0, 0, 0)
 # Env 모듈은 생장등 빛이 직접 닿지 않는 위치에 배치할 것.
 LIGHT_HYSTERESIS = 3.0     # 끄는 기준 = min_lux + 3 (켜는 기준보다 높게)
 LIGHT_MIN_HOLD = 8.0       # 한 번 켜거나 끄면 최소 이 시간은 유지
+
+# --- 건조도(급수 판단) ---
+# [설계 변경] 카메라(HSV)로 흙 표면을 보고 건조도를 매기려 했으나,
+# 카메라를 위에서 내려다보는 각도로 재배치하면서 흙이 프레임에 아예
+# 안 잡히게 됐다 (레고 작물만 중앙에 보임). 그래서 이번 데모는
+# Env 모듈의 습도(공기 중 습도)를 건조도의 대리 지표로 쓴다.
+# vision.soil_dryness()는 지우지 않고 남겨둔다 - 레고가 아닌 실제
+# 작물/흙으로 만들 실제 제품에서는 다시 카메라 기반으로 확장할 수 있다.
+#
+# [정직성 참고] 이것도 여전히 대리 지표다. 습도는 흙 속이 아니라
+# 공기 중 수분이라 실제 토양 수분 함량과 다르다. "습도가 낮을수록
+# 흙도 마르고 있을 가능성이 크다"는 가정 위에 있다.
+def humidity_to_dryness(humidity):
+    """습도(%)를 건조도 지표로 뒤집는다. 습도가 낮을수록 건조도가 높다."""
+    if humidity is None:
+        return None
+    return round(max(0.0, min(100.0, 100.0 - humidity)), 1)
 
 
 class Controller:
@@ -205,10 +222,12 @@ class Controller:
 
     # ------------------------------------------------------ 비전 스캔
     def update_scan(self):
-        """일정 주기마다 작물과 흙을 촬영한다.
+        """일정 주기마다 작물을 촬영해서 인식한다.
 
         ToF 거리 게이트를 쓰지 않으므로, 어르신은 작물을 카메라 앞에
         두기만 하면 된다. 아무 조작도 필요 없다.
+
+        건조도는 더 이상 여기서 카메라로 재지 않는다 (humidity_to_dryness 참고).
         """
         if self.vision is None:
             return
@@ -221,7 +240,6 @@ class Controller:
             return
 
         crop_key = self.vision.classify_crop(frame)
-        dryness = self.vision.soil_dryness(frame)
 
         updates = {}
         crop_started_at = self.store.get("crop_started_at")
@@ -237,8 +255,6 @@ class Controller:
             updates["crop_key"] = crop_key
             updates["crop_name"] = profile["name"]
             updates["profile_name"] = profile["name"]
-        if dryness is not None:
-            updates["dryness"] = round(dryness, 1)
         if updates:
             self.store.update(**updates)
 
@@ -350,6 +366,7 @@ class Controller:
             temperature=env["temperature"],
             humidity=env["humidity"],
             illuminance=env["illuminance"],
+            dryness=humidity_to_dryness(env["humidity"]),
         )
 
         # 2) 주기적 촬영
