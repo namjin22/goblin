@@ -37,8 +37,8 @@ class _ManualScreenState extends State<ManualScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const SizedBox(height: 12),
           const Text('직접 하기', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.ink)),
           const SizedBox(height: 8),
           if (busy)
@@ -49,7 +49,7 @@ class _ManualScreenState extends State<ManualScreen> {
                 style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.greenDark),
               ),
             ),
-          const SizedBox(height: 40),
+          const SizedBox(height: 32),
           Row(
             children: [
               Expanded(
@@ -71,14 +71,28 @@ class _ManualScreenState extends State<ManualScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          _ActionButton(
-            emoji: '💧',
-            label: '물 주기',
-            enabled: !busy,
-            onTap: () => _run('물을 주는', 'water', '물을 주었어요'),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _ActionButton(
+                  emoji: '💧',
+                  label: '물 주기',
+                  enabled: !busy,
+                  onTap: () => _run('물을 주는', 'water', '물을 주었어요'),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _ActionButton(
+                  emoji: '💡',
+                  label: '불 켜기',
+                  enabled: !busy,
+                  onTap: () => _run('불을 켜는', 'light_toggle', '불을 켰어요'),
+                ),
+              ),
+            ],
           ),
-          const Spacer(),
         ],
       ),
     );

@@ -144,7 +144,10 @@ ToF를 쓰지 않으므로 **6초마다 자동으로 촬영**한다 (`SCAN_INTER
 { "command": "water" }
 ```
 
-가능한 값: `vent_open` `vent_close` `vent_toggle` `water` `scan`
+가능한 값: `vent_open` `vent_close` `vent_toggle` `water` `scan` `light_toggle`
+
+`light_toggle`은 생장등을 수동으로 켜고 끈다. 자동 로직(밝기 기준)이 최소
+유지시간(8초) 뒤에 다시 판단할 수 있다 — 환기창 자동 개방과 같은 성격이다.
 
 - 성공 `200` → `{"ok": true, "queued": "water"}`
 - 동작 중 `409` → `{"ok": false, "error": "지금 다른 동작을 하고 있어요..."}`

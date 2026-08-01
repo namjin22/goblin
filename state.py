@@ -16,9 +16,11 @@ import time
 from collections import deque
 
 # 앱이 보낼 수 있는 명령 목록. 여기 없는 명령은 거부한다.
-VALID_COMMANDS = {"vent_open", "vent_close", "vent_toggle", "water", "scan"}
+VALID_COMMANDS = {"vent_open", "vent_close", "vent_toggle", "water", "scan", "light_toggle"}
 
 # LED는 생장등으로만 쓴다. 상태색 표시는 앱이 담당한다.
+# light_toggle은 수동 개입("조작은 언제든 할 수 있다") — 자동 로직(update_grow_light)이
+# 다음 판단 주기에 다시 조정할 수 있다는 점은 창문 자동 개방과 동일하다.
 
 LOG_PATH = "log.csv"   # .gitignore에 이미 등록됨 (기기마다 다른 이력이라 공유 안 함)
 _LOG_FIELDS = ["at", "event", "detail"]
