@@ -134,14 +134,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                     page.subtitle,
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
-                                      fontSize: 17,
+                                      fontSize: 14,
                                       color: AppColors.sub,
                                       height: 1.5,
                                     ),
                                   ),
-                                  const SizedBox(height: 16),
+                                  const SizedBox(height: 12),
                                   DotsIndicator(count: _pages.length, index: i),
-                                  const SizedBox(height: 16),
+                                  const SizedBox(height: 12),
                                   SizedBox(
                                     width: double.infinity,
                                     child: ElevatedButton(

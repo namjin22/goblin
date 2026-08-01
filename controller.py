@@ -373,6 +373,9 @@ class Controller:
         if cmd == "scan":
             self._last_scan = 0.0     # 다음 틱에 바로 촬영
             return True
+        if cmd == "light_toggle":
+            self._set_light(not self._light_on)
+            return True
         return False
 
     # ------------------------------------------------------ 메인 틱
