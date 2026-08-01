@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/farm_status.dart';
+import 'server_config.dart';
 
 /// server.py(Flask)가 노트북에서 띄우는 로컬 API와의 통신 계약.
 /// 앱과 노트북이 같은 Wi-Fi 공유기에 붙어 있다는 전제로 HTTP로 통신한다.
@@ -8,8 +9,9 @@ import '../models/farm_status.dart';
 class FarmApi {
   FarmApi._();
 
-  // TODO: 데모 당일 노트북의 실제 로컬 IP로 교체 (Windows: ipconfig).
-  static const baseUrl = 'http://192.168.0.10:5000';
+  // 노트북 IP는 대회장마다 바뀌므로 하드코딩하지 않고 ServerConfig에서 읽는다
+  // (페어링 화면에서 사용자가 한 번 입력, 이후 SharedPreferences에 저장됨).
+  static String get baseUrl => ServerConfig.baseUrl;
 
   static const _timeout = Duration(seconds: 5);
   static const _headers = {'Content-Type': 'application/json'};

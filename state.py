@@ -9,6 +9,8 @@
 이 규칙을 지켜야 시리얼 통신이 깨지지 않는다.
 """
 
+import csv
+import os
 import threading
 import time
 from collections import deque
@@ -18,14 +20,19 @@ VALID_COMMANDS = {"vent_open", "vent_close", "vent_toggle", "water", "scan"}
 
 # LED는 생장등으로만 쓴다. 상태색 표시는 앱이 담당한다.
 
+LOG_PATH = "log.csv"   # .gitignore에 이미 등록됨 (기기마다 다른 이력이라 공유 안 함)
+_LOG_FIELDS = ["at", "event", "detail"]
+
 
 class Store:
     """스레드 안전한 상태 저장소 + 명령 큐."""
 
-    def __init__(self, history_limit=200):
+    def __init__(self, history_limit=200, log_path=LOG_PATH):
         self._lock = threading.Lock()
         self._commands = deque()
         self._history = deque(maxlen=history_limit)
+        self._log_path = log_path
+        self._load_history_log()
         self._growth_photos = deque(maxlen=52)   # 1년치 주간 사진이면 충분
 
         self._state = {
@@ -99,12 +106,39 @@ class Store:
             return len(self._commands)
 
     # ---------------------------------------------------------- 이력
+    def _load_history_log(self):
+        """이전 실행에서 쌓인 CSV 이력을 불러온다. 재시작해도 '지난 기록'이 안 사라지게."""
+        if not os.path.exists(self._log_path):
+            return
+        try:
+            with open(self._log_path, "r", encoding="utf-8", newline="") as f:
+                for row in csv.DictReader(f):
+                    self._history.append({
+                        "at": float(row["at"]),
+                        "event": row["event"],
+                        "detail": row.get("detail") or "",
+                    })
+        except Exception as e:
+            print("[STATE] 이력 로그 로드 실패, 빈 이력으로 시작한다:", e)
+
+    def _append_history_log(self, entry):
+        """새 이력 한 줄을 CSV에 곧바로 이어 쓴다."""
+        try:
+            is_new = not os.path.exists(self._log_path)
+            with open(self._log_path, "a", encoding="utf-8", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=_LOG_FIELDS)
+                if is_new:
+                    writer.writeheader()
+                writer.writerow(entry)
+        except Exception as e:
+            print("[STATE] 이력 로그 저장 실패:", e)
+
     def add_history(self, event, detail=""):
-        """앱의 '지난 기록' 화면에 쓸 사건을 남긴다."""
+        """앱의 '지난 기록' 화면에 쓸 사건을 남긴다. CSV에도 곧바로 남겨 재시작에도 살아남게 한다."""
+        entry = {"at": time.time(), "event": event, "detail": detail}
         with self._lock:
-            self._history.append(
-                {"at": time.time(), "event": event, "detail": detail}
-            )
+            self._history.append(entry)
+        self._append_history_log(entry)
 
     def history(self, limit=50):
         with self._lock:

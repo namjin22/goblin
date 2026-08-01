@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'screens/home/home_shell.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'services/pairing_service.dart';
+import 'services/server_config.dart';
 import 'theme/app_theme.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await ServerConfig.load();
   runApp(const NongkkaebiApp());
 }
 

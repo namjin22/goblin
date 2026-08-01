@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/pairing_service.dart';
+import '../../services/server_config.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/circle_back_button.dart';
 import '../../widgets/hero_card.dart';
@@ -18,6 +19,7 @@ class _PairingScreenState extends State<PairingScreen> {
   // TODO: 테스트 편의용 임시 기본값 — 실제 배포 전 제거.
   final _nameController = TextEditingController(text: '박채은');
   final _moduleController = TextEditingController(text: PairingService.demoModuleId);
+  final _serverController = TextEditingController(text: ServerConfig.baseUrl);
   String? _error;
   bool _submitting = false;
 
@@ -25,15 +27,17 @@ class _PairingScreenState extends State<PairingScreen> {
   void dispose() {
     _nameController.dispose();
     _moduleController.dispose();
+    _serverController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     final name = _nameController.text.trim();
     final moduleId = _moduleController.text.trim();
+    final serverUrl = _serverController.text.trim();
 
-    if (name.isEmpty || moduleId.isEmpty) {
-      setState(() => _error = '이름과 모듈 고유 번호를 모두 입력해주세요');
+    if (name.isEmpty || moduleId.isEmpty || serverUrl.isEmpty) {
+      setState(() => _error = '이름, 모듈 고유 번호, 서버 주소를 모두 입력해주세요');
       return;
     }
 
@@ -43,6 +47,9 @@ class _PairingScreenState extends State<PairingScreen> {
     });
 
     final ok = await PairingService.pair(name: name, moduleId: moduleId);
+    if (ok) {
+      await ServerConfig.setBaseUrl(serverUrl);
+    }
 
     if (!mounted) return;
     setState(() => _submitting = false);
@@ -81,6 +88,8 @@ class _PairingScreenState extends State<PairingScreen> {
                           _FieldBox(controller: _nameController),
                           _FieldLabel('모듈 고유 번호'),
                           _FieldBox(controller: _moduleController, hint: '기기 뒷면의 번호', keyboardType: TextInputType.number),
+                          _FieldLabel('서버 주소'),
+                          _FieldBox(controller: _serverController, hint: 'http://노트북IP:5000'),
                           if (_error != null) ...[
                             const SizedBox(height: 10),
                             Text(_error!, style: const TextStyle(color: AppColors.statusRedText, fontWeight: FontWeight.w600, fontSize: 15)),
