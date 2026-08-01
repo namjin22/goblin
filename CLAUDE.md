@@ -166,15 +166,9 @@ python hwtest.py           # 모듈 점검
 
 ## 남은 작업 (우선순위 순)
 
-1. **딥러닝 분류기 학습 데이터 수집 + 학습** ← 가장 큰 구멍. 웹캠·opencv-python·torch는 이미 확인됨 (로지텍 USB 웹캠, 인덱스 1). `data/lettuce`는 재배치 전 각도라 전량 폐기함 — 4개 클래스(lettuce/corn/carrot/background) 전부 새 탑다운 각도로 다시 찍어야 한다.
-   ```
-   python collect_data.py --crop lettuce --cam 1
-   python collect_data.py --crop corn --cam 1
-   python collect_data.py --crop carrot --cam 1
-   python collect_data.py --crop background --cam 1 --seconds 15
-   python train_crop_model.py
-   ```
-   찍기 전에 `collect_data.py` 미리보기의 초록 박스(`CROP_ROI`)가 브릭을 잘 감싸는지 먼저 확인할 것.
+1. ~~딥러닝 분류기 학습 데이터 수집 + 학습~~ **완료 (2026-08-01)**. lettuce/corn/carrot 3클래스, 각 15장(증강 후 180장) 학습, 검증 정확도 100%. `models/crop_classifier.pt` 커밋됨. 실제 로지텍 웹캠(인덱스 1)으로 라이브 인식까지 확인함.
+   - `background`(작물 없음) 클래스는 아직 없음 — 지금 모델은 화면에 뭐가 있든 반드시 lettuce/corn/carrot 중 하나로 분류한다. 필요하면 `python collect_data.py --crop background --cam 1 --seconds 15` 로 추가하고 재학습.
+   - 100% 정확도는 노랑/주황/초록처럼 색이 뚜렷이 다른 브릭이라 그런 것 - 조명이 바뀌거나 브릭이 겹치면 달라질 수 있으니 실제 촬영 전에 한 번 더 라이브로 확인할 것.
 2. **`min_lux` 현장 튜닝** — 실내 실측이 3~4였다. 생장등 켰을 때/껐을 때를 재서 중간값으로. (촬영 장소 조명 기준으로 하면 됨 — 대회장 당일 현장일 필요 없음, 시연이 사전 녹화 영상이라)
 3. **앱 합동 테스트** — 서버 주소는 이제 하드코딩이 아니라 페어링 화면에서 입력받아 저장한다(`ServerConfig`). Flutter SDK가 로컬에 없어 컴파일 검증은 못 했으니 팀원이 `flutter analyze`/빌드로 한 번 확인할 것.
 4. 대회장 네트워크 대비 — 우선순위 낮음. 시연이 라이브가 아니라 사전 녹화 영상 재생이라 발표 당일 네트워크는 크리티컬 패스가 아니다. 촬영 세팅 장소에서만 앱↔서버 통신이 되면 됨.
