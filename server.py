@@ -5,18 +5,56 @@
        상태를 읽고, 명령을 큐에 넣을 뿐이다.
 
 앱 담당 팀원에게 알려줄 API
-  GET  /api/state    현재 상태 (앱 [1] 지금 상태 화면)
-  POST /api/command  수동 조작   (앱 [2] 직접 하기 화면)
-  GET  /api/history  지난 기록   (앱 [3] 지난 기록 화면)
-  GET  /api/health   서버 살아있는지 확인
+  GET  /api/state          현재 상태 (앱 [1] 지금 상태 화면)
+  POST /api/command        수동 조작   (앱 [2] 직접 하기 화면)
+  GET  /api/history        지난 기록   (앱 [3] 지난 기록 화면)
+  GET  /api/growth_photos  주간 성장 사진 목록
+  GET  /api/health         서버 살아있는지 확인
 """
 
 import os
 import threading
+import time
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, jsonify, request, send_from_directory
 
+from controller import GROWTH_PHOTO_DIR
+from profiles import get_profile
 from state import VALID_COMMANDS
+
+
+def _growth_info(snap):
+    """성장 일수/수확 예정일을 계산한다.
+
+    실측(웹캠으로 크기 측정)이 아니라 "이 작물을 처음 인식한 시각"부터
+    프로파일의 평균 재배 일수(grow_days)를 더한 추정치다.
+    """
+    started_at = snap.get("crop_started_at")
+    profile = get_profile(snap.get("crop_key"))
+    grow_days = profile.get("grow_days")
+    if started_at is None or grow_days is None:
+        return {"growth_stage": None, "days_growing": None, "harvest_date": None}
+
+    days_growing = int((time.time() - started_at) // 86400)
+    percent = max(0, min(100, round(days_growing / grow_days * 100)))
+
+    if percent >= 90:
+        stage = "수확할 때가 다 됐어요"
+    elif percent >= 60:
+        stage = "많이 자랐어요"
+    elif percent >= 25:
+        stage = "한창 자라는 중이에요"
+    else:
+        stage = "이제 막 자라기 시작했어요"
+
+    harvest_epoch = started_at + grow_days * 86400
+    harvest_date = time.strftime("%m월 %d일", time.localtime(harvest_epoch))
+
+    return {
+        "growth_stage": stage,
+        "days_growing": days_growing,
+        "harvest_date": harvest_date,
+    }
 
 
 def create_app(store):
@@ -64,6 +102,7 @@ def create_app(store):
         나머지 수치는 필요할 때만 쓴다.
         """
         snap = store.snapshot()
+        growth = _growth_info(snap)
         return jsonify({
             "message": snap["message"],          # 큰 글씨 한 줄
             "short": snap.get("short"),          # Display에 나가는 짧은 단어
@@ -80,6 +119,10 @@ def create_app(store):
             "busy_action": snap["busy_action"],
             "mock": snap["mock"],
             "updated_at": snap["updated_at"],
+            # 성장 정도 - 실측이 아니라 인식 이후 경과일 기준 추정치(_growth_info 참고)
+            "growth_stage": growth["growth_stage"],
+            "days_growing": growth["days_growing"],
+            "harvest_date": growth["harvest_date"],
         })
 
     @app.route("/api/command", methods=["POST", "OPTIONS"])
@@ -116,6 +159,28 @@ def create_app(store):
         """앱 [3] 지난 기록 화면용."""
         limit = request.args.get("limit", default=50, type=int)
         return jsonify({"items": store.history(limit=limit)})
+
+    @app.route("/api/growth_photos")
+    def get_growth_photos():
+        """지금 인식 중인 작물의 주간 성장 사진 목록.
+
+        웹캠으로 실제 크기를 잰 게 아니라 controller.py가 일주일에 한 번
+        찍어 남겨둔 스냅샷이다(controller._maybe_save_growth_photo 참고).
+        """
+        crop_key = store.get("crop_key")
+        photos = store.growth_photos(crop_key=crop_key)
+        items = [{
+            "week": p["week"],
+            "crop_name": p["crop_name"],
+            "taken_at": p["taken_at"],
+            "url": "/growth_photos/%s" % p["filename"],
+        } for p in photos]
+        return jsonify({"items": items})
+
+    @app.route("/growth_photos/<path:filename>")
+    def get_growth_photo_file(filename):
+        directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), GROWTH_PHOTO_DIR)
+        return send_from_directory(directory, filename)
 
     return app
 

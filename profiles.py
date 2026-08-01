@@ -19,6 +19,9 @@
 # 따라서 min_lux를 40~60으로 두면 항상 "빛이 부족합니다"가 뜬다.
 # 대회장에서 python hwtest.py --sensor 로 실제 값을 보고
 # (밝을 때 값 + 어두울 때 값)의 중간쯤으로 다시 잡을 것.
+# grow_days : 심은(=처음 인식한) 날로부터 수확까지 걸리는 대략적인 재배 일수.
+#             실측이 아니라 일반적인 재배 기간 기준값이다. 웹캠으로 실제 크기를
+#             재는 게 아니라 "인식된 이후 며칠째인지"로 성장 정도를 추정한다.
 CROP_PROFILES = {
     "lettuce": {
         "name": "상추",
@@ -26,6 +29,7 @@ CROP_PROFILES = {
         "min_lux": 3,
         "dry_limit": 55,          # 건조에 취약 -> 낮은 임계값
         "note": "고온에서 웃자람",
+        "grow_days": 30,
     },
     "corn": {
         "name": "옥수수",
@@ -33,6 +37,7 @@ CROP_PROFILES = {
         "min_lux": 6,
         "dry_limit": 70,          # 뿌리가 깊어 가뭄엔 비교적 강함
         "note": "고온성, 광량 많이 필요",
+        "grow_days": 90,
     },
     "carrot": {
         "name": "당근",
@@ -40,6 +45,7 @@ CROP_PROFILES = {
         "min_lux": 4,
         "dry_limit": 45,          # 뿌리 비대기에 수분 불균일하면 갈라짐 -> 일찍 급수
         "note": "서늘한 걸 선호, 균일한 수분 필요",
+        "grow_days": 75,
     },
 }
 
@@ -51,6 +57,7 @@ DEFAULT_PROFILE = {
     "min_lux": 4,
     "dry_limit": 65,
     "note": "작물 인식 전 기본값",
+    "grow_days": 60,
 }
 
 
