@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/farm_api.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/scrollable_fill.dart';
 import '../../widgets/top_toast.dart';
 
 /// 화면[2] 직접 하기 - 조작(Operation)은 언제든 할 수 있다.
@@ -34,7 +35,7 @@ class _ManualScreenState extends State<ManualScreen> {
   @override
   Widget build(BuildContext context) {
     final busy = _running != null;
-    return Padding(
+    return ScrollableFill(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,

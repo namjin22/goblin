@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/farm_status.dart';
 import '../../services/farm_api.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/scrollable_fill.dart';
 
 extension on FarmLevel {
   Color get background => switch (this) {
@@ -54,7 +55,7 @@ class _StatusScreenState extends State<StatusScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return ScrollableFill(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
