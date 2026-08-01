@@ -49,24 +49,24 @@ class _ManualScreenState extends State<ManualScreen> {
                 style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.greenDark),
               ),
             ),
-          const Spacer(),
+          const SizedBox(height: 40),
           Row(
             children: [
               Expanded(
                 child: _ActionButton(
                   emoji: '🪟',
-                  label: '창문 열기',
+                  label: '온실 열기',
                   enabled: !busy,
-                  onTap: () => _run('창문을 여는', 'vent_open', '창문을 열었어요'),
+                  onTap: () => _run('온실을 여는', 'vent_open', '온실을 열었어요'),
                 ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: _ActionButton(
                   emoji: '🚪',
-                  label: '창문 닫기',
+                  label: '온실 닫기',
                   enabled: !busy,
-                  onTap: () => _run('창문을 닫는', 'vent_close', '창문을 닫았어요'),
+                  onTap: () => _run('온실을 닫는', 'vent_close', '온실을 닫았어요'),
                 ),
               ),
             ],
