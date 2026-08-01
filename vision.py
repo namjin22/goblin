@@ -203,7 +203,13 @@ class Vision:
             print("[VISION] 모델 추론 실패, HSV로 넘긴다:", e)
             return None
 
+        # [진단용] 인식이 잘 안 될 때 어느 클래스를 얼마나 확신했는지 바로
+        # 보려고 매 스캔마다 전체 확률을 찍는다. 문제 해결되면 지워도 된다.
+        pairs = sorted(zip(self._class_map, probs.tolist()), key=lambda p: -p[1])
+        print("[VISION] 분류 확률:", ", ".join("%s=%.2f" % p for p in pairs))
+
         if conf < MODEL_CONF_THRESHOLD:
+            print("[VISION] 확신 부족(%.2f < %.2f) - HSV로 넘긴다" % (conf, MODEL_CONF_THRESHOLD))
             return None
         return self._class_map[idx]
 
