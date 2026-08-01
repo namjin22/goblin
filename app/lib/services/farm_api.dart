@@ -49,17 +49,6 @@ class FarmApi {
     }
   }
 
-  static Future<List<HistoryItem>?> fetchHistory({int limit = 100}) async {
-    try {
-      final res = await http.get(Uri.parse('$baseUrl/api/history?limit=$limit')).timeout(_timeout);
-      if (res.statusCode != 200) return null;
-      final items = (jsonDecode(res.body) as Map<String, dynamic>)['items'] as List;
-      return items.map((e) => HistoryItem.fromJson(e as Map<String, dynamic>)).toList();
-    } catch (_) {
-      return null;
-    }
-  }
-
   static Future<List<GrowthPhoto>?> fetchGrowthPhotos() async {
     try {
       final res = await http.get(Uri.parse('$baseUrl/api/growth_photos')).timeout(_timeout);

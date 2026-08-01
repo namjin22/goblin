@@ -84,23 +84,6 @@ class FarmState {
       );
 }
 
-/// server.py `/api/history`의 항목 하나. `at`은 UNIX epoch(초).
-class HistoryItem {
-  const HistoryItem({required this.at, required this.event, required this.detail});
-
-  final double at;
-  final String event;
-  final String detail;
-
-  DateTime get time => DateTime.fromMillisecondsSinceEpoch((at * 1000).round());
-
-  factory HistoryItem.fromJson(Map<String, dynamic> json) => HistoryItem(
-        at: (json['at'] as num).toDouble(),
-        event: json['event'] as String,
-        detail: json['detail'] as String? ?? '',
-      );
-}
-
 /// server.py `/api/growth_photos`의 항목 하나 — 일주일에 한 번 남긴 성장 스냅샷.
 class GrowthPhoto {
   const GrowthPhoto({required this.week, required this.cropName, required this.url});

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 
-const _labels = ['지금 상태', '직접 하기', '지난 기록'];
+const _labels = ['지금 상태', '직접 하기', '성장 과정'];
 
 /// 목업의 .bottomnav / .status-bottomnav — 화면 배경에 맞춰 밝은/어두운 버전을 고른다.
 /// 선택 여부를 글자 굵기로 표시하면 글자 폭이 바뀌어 탭이 떨려 보이므로,

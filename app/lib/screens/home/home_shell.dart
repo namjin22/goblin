@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../widgets/bottom_nav_bar.dart';
-import 'history_screen.dart';
+import 'growth_screen.dart';
 import 'manual_screen.dart';
 import 'status_screen.dart';
 
-/// 명세서 5번 화면 구성 - 3화면으로 제한: [1]지금 상태 [2]직접 하기 [3]지난 기록
+/// 명세서 5번 화면 구성 - 3화면으로 제한: [1]지금 상태 [2]직접 하기 [3]성장 과정
 ///
 /// 하단 탭바를 화면마다 따로 두면 각 화면의 좌우 여백이 달라 탭 위치가
 /// 화면 전환마다 미묘하게 움직여 보인다. 그래서 탭바는 여기 한 곳에서만
@@ -25,7 +25,7 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final body = switch (_index) {
       1 => const ManualScreen(),
-      2 => const HistoryScreen(),
+      2 => const GrowthScreen(),
       _ => const StatusScreen(),
     };
 
