@@ -39,14 +39,14 @@ class _ManualScreenState extends State<ManualScreen> {
       child: Column(
         children: [
           const SizedBox(height: 12),
-          const Text('직접 하기', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.ink)),
+          const Text('직접 하기', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.ink)),
           const SizedBox(height: 8),
           if (busy)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
               child: Text(
                 '$_running 중이에요...',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.greenDark),
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.greenDark),
               ),
             ),
           const Spacer(),
@@ -110,9 +110,9 @@ class _ActionButton extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 36)),
+            Text(emoji, style: const TextStyle(fontSize: 38)),
             const SizedBox(height: 10),
-            Text(label, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+            Text(label, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
           ],
         ),
       ),

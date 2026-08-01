@@ -134,7 +134,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                     page.subtitle,
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
-                                      fontSize: 15,
+                                      fontSize: 17,
                                       color: AppColors.sub,
                                       height: 1.5,
                                     ),

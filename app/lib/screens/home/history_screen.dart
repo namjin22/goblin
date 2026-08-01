@@ -27,6 +27,7 @@ String _emojiFor(String event) => switch (event) {
 
 /// 화면[3] 지난 기록 - server.py `/api/history`를 받아 "물을 주었습니다" 수준의
 /// 문장형 요약으로 보여준다. 오늘/이번 주는 서버가 나눠주지 않으므로 timestamp로 직접 나눈다.
+/// 성장 사진(주간 스냅샷)도 "지난 기록"의 일부로 여기 함께 보여준다.
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
@@ -39,18 +40,27 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   int _period = 0;
   List<HistoryItem> _allItems = [];
+  List<GrowthPhoto> _photos = const [];
 
   @override
   void initState() {
     super.initState();
     _allItems = _buildDemoItems();
     _refresh();
+    _refreshPhotos();
   }
 
   Future<void> _refresh() async {
     final fetched = await FarmApi.fetchHistory(limit: 200);
     if (!mounted || fetched == null) return;
     setState(() => _allItems = fetched);
+  }
+
+  Future<void> _refreshPhotos() async {
+    // 사진은 일주일에 한 번만 늘어나므로 기록처럼 자주 폴링할 필요는 없다.
+    final fetched = await FarmApi.fetchGrowthPhotos();
+    if (!mounted || fetched == null) return;
+    setState(() => _photos = fetched);
   }
 
   List<HistoryItem> get _visibleItems {
@@ -71,9 +81,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
           const SizedBox(height: 8),
           const Align(
             alignment: Alignment.centerLeft,
-            child: Text('지난 기록', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.ink)),
+            child: Text('지난 기록', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.ink)),
           ),
           const SizedBox(height: 16),
+          _GrowthPhotoStrip(photos: _photos),
+          const SizedBox(height: 20),
           _PeriodToggle(
             labels: _periods,
             selected: _period,
@@ -83,7 +95,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Expanded(
             child: items.isEmpty
                 ? const Center(
-                    child: Text('아직 기록이 없어요', style: TextStyle(color: AppColors.sub, fontSize: 16, fontWeight: FontWeight.w600)),
+                    child: Text('아직 기록이 없어요', style: TextStyle(color: AppColors.sub, fontSize: 18, fontWeight: FontWeight.w600)),
                   )
                 : ListView.separated(
                     itemCount: items.length,
@@ -93,6 +105,78 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 일주일 간격으로 웹캠이 찍어둔 성장 스냅샷 — server.py `/api/growth_photos`.
+class _GrowthPhotoStrip extends StatelessWidget {
+  const _GrowthPhotoStrip({required this.photos});
+
+  final List<GrowthPhoto> photos;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('성장 사진', style: TextStyle(color: AppColors.ink, fontSize: 18, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 10),
+          if (photos.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              decoration: BoxDecoration(color: AppColors.greenLight, borderRadius: BorderRadius.circular(16)),
+              child: const Center(
+                child: Text('아직 성장 사진이 없어요', style: TextStyle(color: AppColors.sub, fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+            )
+          else
+            SizedBox(
+              height: 132,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: photos.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (context, i) => _GrowthPhotoThumb(photo: photos[i]),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GrowthPhotoThumb extends StatelessWidget {
+  const _GrowthPhotoThumb({required this.photo});
+
+  final GrowthPhoto photo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Image.network(
+            FarmApi.photoUrl(photo.url),
+            width: 96,
+            height: 96,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stack) => Container(
+              width: 96,
+              height: 96,
+              color: AppColors.greenLight,
+              alignment: Alignment.center,
+              child: const Icon(Icons.image_not_supported_outlined, color: AppColors.sub, size: 28),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text('${photo.week + 1}주차', style: const TextStyle(color: AppColors.sub, fontSize: 13, fontWeight: FontWeight.w600)),
+      ],
     );
   }
 }
@@ -126,7 +210,7 @@ class _PeriodToggle extends StatelessWidget {
                 child: Text(
                   labels[i],
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 18,
                     fontWeight: active ? FontWeight.w800 : FontWeight.w600,
                     color: active ? AppColors.greenDark : AppColors.sub,
                   ),
@@ -158,7 +242,7 @@ class _HistoryRow extends StatelessWidget {
           Expanded(
             child: Text(
               item.detail.isEmpty ? item.event : item.detail,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.ink),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.ink),
             ),
           ),
         ],

@@ -83,7 +83,7 @@ class _PairingScreenState extends State<PairingScreen> {
                           _FieldBox(controller: _moduleController, hint: '기기 뒷면의 번호', keyboardType: TextInputType.number),
                           if (_error != null) ...[
                             const SizedBox(height: 10),
-                            Text(_error!, style: const TextStyle(color: AppColors.statusRedText, fontWeight: FontWeight.w600, fontSize: 13)),
+                            Text(_error!, style: const TextStyle(color: AppColors.statusRedText, fontWeight: FontWeight.w600, fontSize: 15)),
                           ],
                           const SizedBox(height: 16),
                           SizedBox(
@@ -123,7 +123,7 @@ class _FieldLabel extends StatelessWidget {
       padding: const EdgeInsets.only(top: 20, bottom: 8),
       child: Align(
         alignment: Alignment.center,
-        child: Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.ink)),
+        child: Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.ink)),
       ),
     );
   }
@@ -140,7 +140,7 @@ class _FieldBox extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      height: 48,
+      height: 52,
       decoration: BoxDecoration(
         color: const Color(0xFFFAFAFA),
         borderRadius: BorderRadius.circular(12),
@@ -151,7 +151,7 @@ class _FieldBox extends StatelessWidget {
         controller: controller,
         textAlign: TextAlign.center,
         keyboardType: keyboardType,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.ink),
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.ink),
         decoration: InputDecoration(
           hintText: hint,
           border: InputBorder.none,

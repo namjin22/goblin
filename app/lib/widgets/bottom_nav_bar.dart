@@ -41,7 +41,7 @@ class BottomNavBar extends StatelessWidget {
               child: Text(
                 _labels[i],
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: selected ? active : inactive,
                 ),

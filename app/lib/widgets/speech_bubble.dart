@@ -11,8 +11,8 @@ class SpeechBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      constraints: const BoxConstraints(maxWidth: 280),
-      height: 76,
+      constraints: const BoxConstraints(maxWidth: 300),
+      height: 84,
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
@@ -23,7 +23,7 @@ class SpeechBubble extends StatelessWidget {
       child: Text(
         text,
         textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink, height: 1.3),
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink, height: 1.3),
       ),
     );
   }

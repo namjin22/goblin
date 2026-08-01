@@ -27,13 +27,10 @@ class _StatusScreenState extends State<StatusScreen> {
   bool _hasRealData = false;
   Timer? _poller;
 
-  List<GrowthPhoto> _photos = const [];
-
   @override
   void initState() {
     super.initState();
     _refresh();
-    _refreshPhotos();
     _poller = Timer.periodic(const Duration(seconds: 2), (_) => _refresh());
   }
 
@@ -55,16 +52,9 @@ class _StatusScreenState extends State<StatusScreen> {
     }
   }
 
-  Future<void> _refreshPhotos() async {
-    // 사진은 일주일에 한 번만 늘어나므로 상태처럼 자주 폴링할 필요는 없다.
-    final fetched = await FarmApi.fetchGrowthPhotos();
-    if (!mounted || fetched == null) return;
-    setState(() => _photos = fetched);
-  }
-
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
@@ -74,9 +64,6 @@ class _StatusScreenState extends State<StatusScreen> {
           _StatusCard(state: _state),
           const SizedBox(height: 14),
           _FactsGrid(state: _state),
-          const SizedBox(height: 14),
-          _GrowthPhotoStrip(photos: _photos),
-          const SizedBox(height: 8),
         ],
       ),
     );
@@ -96,7 +83,7 @@ class _CameraPreview extends StatelessWidget {
       child: Stack(
         children: [
           const Center(
-            child: Text('웹캠 미리보기', style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
+            child: Text('웹캠 미리보기', style: TextStyle(color: Colors.white54, fontSize: 15, fontWeight: FontWeight.w600)),
           ),
           Positioned(
             top: 10,
@@ -109,7 +96,7 @@ class _CameraPreview extends StatelessWidget {
                 children: [
                   CircleAvatar(radius: 3.5, backgroundColor: Color(0xFFFF5B5B)),
                   SizedBox(width: 5),
-                  Text('실시간', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                  Text('실시간', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
                 ],
               ),
             ),
@@ -133,12 +120,12 @@ class _StatusCard extends StatelessWidget {
       decoration: BoxDecoration(color: state.level.background, borderRadius: BorderRadius.circular(24)),
       child: Column(
         children: [
-          Text(state.cropName, style: const TextStyle(color: AppColors.ink, fontSize: 14, fontWeight: FontWeight.w700)),
+          Text(state.cropName, style: const TextStyle(color: AppColors.ink, fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
           Text(
             state.message,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.ink, fontSize: 24, fontWeight: FontWeight.w800, height: 1.4),
+            style: const TextStyle(color: AppColors.ink, fontSize: 28, fontWeight: FontWeight.w800, height: 1.4),
           ),
           if (state.harvestDate != null) ...[
             const SizedBox(height: 14),
@@ -147,7 +134,7 @@ class _StatusCard extends StatelessWidget {
             Text(
               '수확 예정일 ${state.harvestDate}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.ink, fontSize: 19, fontWeight: FontWeight.w800),
+              style: const TextStyle(color: AppColors.ink, fontSize: 22, fontWeight: FontWeight.w800),
             ),
           ],
         ],
@@ -181,78 +168,6 @@ class _FactsGrid extends StatelessWidget {
   }
 }
 
-/// 일주일 간격으로 웹캠이 찍어둔 성장 스냅샷 — server.py `/api/growth_photos`.
-class _GrowthPhotoStrip extends StatelessWidget {
-  const _GrowthPhotoStrip({required this.photos});
-
-  final List<GrowthPhoto> photos;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('성장 사진', style: TextStyle(color: AppColors.ink, fontSize: 16, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 10),
-          if (photos.isEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              decoration: BoxDecoration(color: AppColors.greenLight, borderRadius: BorderRadius.circular(16)),
-              child: const Center(
-                child: Text('아직 성장 사진이 없어요', style: TextStyle(color: AppColors.sub, fontSize: 14, fontWeight: FontWeight.w600)),
-              ),
-            )
-          else
-            SizedBox(
-              height: 128,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: photos.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 10),
-                itemBuilder: (context, i) => _GrowthPhotoThumb(photo: photos[i]),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GrowthPhotoThumb extends StatelessWidget {
-  const _GrowthPhotoThumb({required this.photo});
-
-  final GrowthPhoto photo;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Image.network(
-            FarmApi.photoUrl(photo.url),
-            width: 96,
-            height: 96,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stack) => Container(
-              width: 96,
-              height: 96,
-              color: AppColors.greenLight,
-              alignment: Alignment.center,
-              child: const Icon(Icons.image_not_supported_outlined, color: AppColors.sub, size: 28),
-            ),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text('${photo.week + 1}주차', style: const TextStyle(color: AppColors.sub, fontSize: 12, fontWeight: FontWeight.w600)),
-      ],
-    );
-  }
-}
-
 class _Fact extends StatelessWidget {
   const _Fact({required this.label, required this.value});
 
@@ -266,9 +181,9 @@ class _Fact extends StatelessWidget {
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
       child: Column(
         children: [
-          Text(label, style: const TextStyle(color: AppColors.sub, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(label, style: const TextStyle(color: AppColors.sub, fontSize: 13, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
-          Text(value, style: const TextStyle(color: AppColors.ink, fontSize: 18, fontWeight: FontWeight.w800)),
+          Text(value, style: const TextStyle(color: AppColors.ink, fontSize: 20, fontWeight: FontWeight.w800)),
         ],
       ),
     );
