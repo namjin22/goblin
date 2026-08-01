@@ -83,9 +83,10 @@ def parse_args():
                    help="앱에 실시간 웹캠 미리보기 제공 (실험적 - 웹캠을 "
                         "0.5초마다 읽어서 메인 루프가 멈출 위험이 있다고 "
                         "의심됨. 기본은 꺼짐)")
-    p.add_argument("--skip-vent-confirm", action="store_true",
-                   help="환기창 닫힘 확인 + 열림/닫힘 방향 확인 프롬프트 둘 다 "
-                        "생략 (문이 항상 닫혀있고 방향도 확실할 때만. 데모 녹화 등)")
+    p.add_argument("--verify-vent", action="store_true",
+                   help="시작할 때 환기창 닫힘 확인 + 열림/닫힘 방향 확인 프롬프트를 "
+                        "띄운다 (기본은 꺼짐 - 방향/각도가 이미 확정됐으면 "
+                        "매번 확인할 필요 없다. 배선을 다시 만졌을 때만 켤 것)")
     return p.parse_args()
 
 
@@ -121,12 +122,13 @@ def main():
     store.update(mock=mock_hw)
 
     # [중요] state.py는 시작할 때 vent_open=False(닫힘)로 가정한다.
-    # 환기창은 이제 상대회전으로 움직이므로(hardware.py 참고), 이 가정이
-    # 실제 상태와 다르면 열기/닫기가 상태 가드에 막히거나 겹쳐 돌아서
-    # 위치가 어긋난다. 그래서 시작할 때 실제로 닫혀 있는지 확인한다.
-    if not mock_hw and not args.skip_vent_confirm:
-        input("환기창을 완전히 닫아둔 상태인지 확인하고 Enter를 누르세요"
-              " (매번 확인 귀찮으면 --skip-vent-confirm) ")
+    # 환기창은 상대회전으로 움직이므로(hardware.py 참고), 이 가정이 실제
+    # 상태와 다르면 열기/닫기가 상태 가드에 막히거나 겹쳐 돌아서 위치가
+    # 어긋난다. 방향(VENT_A_SIGN/VENT_B_SIGN)도 이미 실물로 확정됐으니
+    # (2026-08-01) 기본은 그냥 믿고 넘어간다 - 배선을 다시 만졌을 때만
+    # --verify-vent로 다시 확인할 것.
+    if not mock_hw and args.verify_vent:
+        input("환기창을 완전히 닫아둔 상태인지 확인하고 Enter를 누르세요 ")
 
     # 1) 하드웨어 연결
     try:
@@ -140,7 +142,7 @@ def main():
         print("       --mock 또는 --mock-hw 로 실행하면 MODI 없이 개발할 수 있다.")
         return 1
 
-    if not mock_hw and not args.skip_vent_confirm:
+    if not mock_hw and args.verify_vent:
         _verify_vent_direction(hw)
 
     # 2) 비전 준비 (--mock-hw만 줬으면 웹캠은 실물을 쓴다. 실패 시 자동으로 Mock)
