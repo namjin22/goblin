@@ -4,8 +4,8 @@ import '../../theme/app_colors.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/top_toast.dart';
 
-/// 화면[2] 직접 하기 - 조작(Operation)은 언제든 할 수 있다: 버튼 2개만.
-/// server.py는 vent_toggle(열림<->닫힘) / water 명령만 받는다.
+/// 화면[2] 직접 하기 - 조작(Operation)은 언제든 할 수 있다.
+/// server.py는 vent_open / vent_close / water 명령을 받는다.
 class ManualScreen extends StatefulWidget {
   const ManualScreen({super.key, required this.navIndex, required this.onNavChanged});
 
@@ -56,11 +56,26 @@ class _ManualScreenState extends State<ManualScreen> {
                   ),
                 ),
               const Spacer(),
-              _ActionButton(
-                emoji: '🪟',
-                label: '창문 열기/닫기',
-                enabled: !busy,
-                onTap: () => _run('창문을 움직이는', 'vent_toggle', '창문을 움직였어요'),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ActionButton(
+                      emoji: '🪟',
+                      label: '창문 열기',
+                      enabled: !busy,
+                      onTap: () => _run('창문을 여는', 'vent_open', '창문을 열었어요'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _ActionButton(
+                      emoji: '🚪',
+                      label: '창문 닫기',
+                      enabled: !busy,
+                      onTap: () => _run('창문을 닫는', 'vent_close', '창문을 닫았어요'),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 20),
               _ActionButton(
@@ -98,14 +113,15 @@ class _ActionButton extends StatelessWidget {
           backgroundColor: AppColors.greenLight,
           foregroundColor: AppColors.ink,
           elevation: 0,
+          padding: EdgeInsets.zero,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 40)),
+            Text(emoji, style: const TextStyle(fontSize: 36)),
             const SizedBox(height: 10),
-            Text(label, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            Text(label, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
           ],
         ),
       ),

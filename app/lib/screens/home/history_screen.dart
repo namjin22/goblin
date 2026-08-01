@@ -4,7 +4,18 @@ import '../../services/farm_api.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/bottom_nav_bar.dart';
 
-const _demoItems = <HistoryItem>[];
+/// server.py(FarmApi)에 닿지 못할 때(오프라인 개발 중) 보여줄 대체 데이터.
+List<HistoryItem> _buildDemoItems() {
+  final now = DateTime.now();
+  double hoursAgo(double h) => now.subtract(Duration(minutes: (h * 60).round())).millisecondsSinceEpoch / 1000;
+  return [
+    HistoryItem(at: hoursAgo(0.5), event: 'water', detail: '물을 주었습니다'),
+    HistoryItem(at: hoursAgo(2), event: 'vent_open', detail: '창문을 열었습니다'),
+    HistoryItem(at: hoursAgo(5), event: 'scan', detail: '상추을(를) 확인했습니다'),
+    HistoryItem(at: hoursAgo(30), event: 'water', detail: '물을 주었습니다'),
+    HistoryItem(at: hoursAgo(48), event: 'vent_close', detail: '창문을 닫았습니다'),
+  ];
+}
 
 String _emojiFor(String event) => switch (event) {
       'water' => '💧',
@@ -31,11 +42,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   static const _periods = ['오늘', '이번 주'];
 
   int _period = 0;
-  List<HistoryItem> _allItems = _demoItems;
+  List<HistoryItem> _allItems = [];
 
   @override
   void initState() {
     super.initState();
+    _allItems = _buildDemoItems();
     _refresh();
   }
 

@@ -27,7 +27,8 @@ class StatusScreen extends StatefulWidget {
 }
 
 class _StatusScreenState extends State<StatusScreen> {
-  FarmState _state = FarmState.initial;
+  FarmState _state = FarmState.loading;
+  bool _hasRealData = false;
   Timer? _poller;
 
   @override
@@ -45,8 +46,14 @@ class _StatusScreenState extends State<StatusScreen> {
 
   Future<void> _refresh() async {
     final fetched = await FarmApi.fetchState();
-    if (!mounted || fetched == null) return;
-    setState(() => _state = fetched);
+    if (!mounted) return;
+    if (fetched != null) {
+      _hasRealData = true;
+      setState(() => _state = fetched);
+    } else if (!_hasRealData) {
+      // server.py에 아직 닿지 못함 — 오프라인 개발용 대체 데이터로 보여준다.
+      setState(() => _state = FarmState.demo);
+    }
   }
 
   @override
@@ -130,6 +137,24 @@ class _StatusCard extends StatelessWidget {
             textAlign: TextAlign.center,
             style: const TextStyle(color: AppColors.ink, fontSize: 24, fontWeight: FontWeight.w800, height: 1.4),
           ),
+          if (state.growthStage != null) ...[
+            const SizedBox(height: 14),
+            Container(height: 1, width: 48, color: AppColors.ink.withValues(alpha: 0.15)),
+            const SizedBox(height: 14),
+            Text(
+              state.growthStage!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.ink, fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            if (state.harvestDate != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                '수확 예정일 ${state.harvestDate}',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.ink.withValues(alpha: 0.7), fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ],
         ],
       ),
     );

@@ -18,6 +18,9 @@ class FarmState {
     required this.dryness,
     required this.ventOpen,
     required this.busy,
+    required this.growthStage,
+    required this.daysGrowing,
+    required this.harvestDate,
   });
 
   final String message;
@@ -31,7 +34,13 @@ class FarmState {
   final bool ventOpen;
   final bool busy;
 
-  static const initial = FarmState(
+  /// 웹캠으로 실제 크기를 잰 값이 아니라, 처음 인식한 시각 + 프로파일의
+  /// 평균 재배 일수로 추정한 값이다(server.py `_growth_info` 참고).
+  final String? growthStage;
+  final int? daysGrowing;
+  final String? harvestDate;
+
+  static const loading = FarmState(
     message: '불러오는 중이에요',
     level: FarmLevel.good,
     cropName: '확인 중',
@@ -40,6 +49,24 @@ class FarmState {
     dryness: null,
     ventOpen: false,
     busy: false,
+    growthStage: null,
+    daysGrowing: null,
+    harvestDate: null,
+  );
+
+  /// server.py(FarmApi)에 닿지 못할 때(오프라인 개발 중) 보여줄 대체 데이터.
+  static const demo = FarmState(
+    message: '상추가 잘 자라고 있어요',
+    level: FarmLevel.good,
+    cropName: '상추',
+    temperature: 24,
+    humidity: 55,
+    dryness: 35,
+    ventOpen: false,
+    busy: false,
+    growthStage: '한창 자라는 중이에요',
+    daysGrowing: 12,
+    harvestDate: '8월 20일',
   );
 
   factory FarmState.fromJson(Map<String, dynamic> json) => FarmState(
@@ -51,6 +78,9 @@ class FarmState {
         dryness: (json['dryness'] as num?)?.toDouble(),
         ventOpen: json['vent_open'] as bool? ?? false,
         busy: json['busy'] as bool? ?? false,
+        growthStage: json['growth_stage'] as String?,
+        daysGrowing: json['days_growing'] as int?,
+        harvestDate: json['harvest_date'] as String?,
       );
 }
 
