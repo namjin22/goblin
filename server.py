@@ -13,10 +13,46 @@
 
 import os
 import threading
+import time
 
 from flask import Flask, Response, jsonify, request
 
+from profiles import get_profile
 from state import VALID_COMMANDS
+
+
+def _growth_info(snap):
+    """성장 일수/수확 예정일을 계산한다.
+
+    실측(웹캠으로 크기 측정)이 아니라 "이 작물을 처음 인식한 시각"부터
+    프로파일의 평균 재배 일수(grow_days)를 더한 추정치다.
+    """
+    started_at = snap.get("crop_started_at")
+    profile = get_profile(snap.get("crop_key"))
+    grow_days = profile.get("grow_days")
+    if started_at is None or grow_days is None:
+        return {"growth_stage": None, "days_growing": None, "harvest_date": None}
+
+    days_growing = int((time.time() - started_at) // 86400)
+    percent = max(0, min(100, round(days_growing / grow_days * 100)))
+
+    if percent >= 90:
+        stage = "수확할 때가 다 됐어요"
+    elif percent >= 60:
+        stage = "많이 자랐어요"
+    elif percent >= 25:
+        stage = "한창 자라는 중이에요"
+    else:
+        stage = "이제 막 자라기 시작했어요"
+
+    harvest_epoch = started_at + grow_days * 86400
+    harvest_date = time.strftime("%m월 %d일", time.localtime(harvest_epoch))
+
+    return {
+        "growth_stage": stage,
+        "days_growing": days_growing,
+        "harvest_date": harvest_date,
+    }
 
 
 def create_app(store):
@@ -64,6 +100,7 @@ def create_app(store):
         나머지 수치는 필요할 때만 쓴다.
         """
         snap = store.snapshot()
+        growth = _growth_info(snap)
         return jsonify({
             "message": snap["message"],          # 큰 글씨 한 줄
             "short": snap.get("short"),          # Display에 나가는 짧은 단어
@@ -80,6 +117,10 @@ def create_app(store):
             "busy_action": snap["busy_action"],
             "mock": snap["mock"],
             "updated_at": snap["updated_at"],
+            # 성장 정도 - 실측이 아니라 인식 이후 경과일 기준 추정치(_growth_info 참고)
+            "growth_stage": growth["growth_stage"],
+            "days_growing": growth["days_growing"],
+            "harvest_date": growth["harvest_date"],
         })
 
     @app.route("/api/command", methods=["POST", "OPTIONS"])

@@ -36,6 +36,7 @@ class Store:
             # 비전
             "crop_key": None,
             "crop_name": "확인 중",
+            "crop_started_at": None,  # 지금 작물을 처음 인식한 시각(성장 일수 계산용)
             "dryness": None,          # 0(젖음) ~ 100(마름)
             # 판단 결과
             "level": "good",          # good / warn / alert

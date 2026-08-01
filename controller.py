@@ -221,10 +221,11 @@ class Controller:
         updates = {}
         if crop_key:
             profile = get_profile(crop_key)
-            # 작물이 바뀐 경우에만 기록을 남긴다
+            # 작물이 바뀐 경우에만 기록을 남기고, 성장 일수 기준(첫 인식 시각)을 새로 잡는다.
             if crop_key != self.store.get("crop_key"):
                 self.store.add_history(
                     "scan", "%s을(를) 확인했습니다" % profile["name"])
+                updates["crop_started_at"] = time.time()
             updates["crop_key"] = crop_key
             updates["crop_name"] = profile["name"]
             updates["profile_name"] = profile["name"]

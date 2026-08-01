@@ -114,11 +114,16 @@ ToF를 쓰지 않으므로 **6초마다 자동으로 촬영**한다 (`SCAN_INTER
   "dryness": 40.0,
   "vent_open": true,
   "sprinkler_on": false,
-  "busy": false
+  "busy": false,
+  "growth_stage": "한창 자라는 중이에요",
+  "days_growing": 12,
+  "harvest_date": "08월 20일"
 }
 ```
 
 `message`와 `level`만 크게 보여주면 된다. `level`은 `good`(초록) / `warn`(노랑) / `alert`(빨강)으로 배경색에 쓴다. 나머지 수치는 필요할 때만.
+
+`growth_stage` / `days_growing` / `harvest_date`는 웹캠으로 실제 크기를 재서 계산한 값이 아니라, **이 작물을 처음 인식한 시각 + 프로파일의 평균 재배 일수(`profiles.py`의 `grow_days`)**로 추정한 값이다. 작물이 바뀌면(다른 작물을 인식하면) 카운트가 새로 시작된다. 아직 작물을 인식하지 못했으면 셋 다 `null`.
 
 ### POST /api/command — 앱 [2] 직접 하기
 
