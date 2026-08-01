@@ -11,19 +11,19 @@ class SpeechBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      constraints: const BoxConstraints(maxWidth: 280),
-      height: 76,
+      constraints: const BoxConstraints(maxWidth: 260),
+      height: 64,
       alignment: Alignment.center,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: AppColors.green, width: 2),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Text(
         text,
         textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink, height: 1.3),
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.ink, height: 1.3),
       ),
     );
   }
