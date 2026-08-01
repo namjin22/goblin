@@ -70,7 +70,6 @@ class _PairingScreenState extends State<PairingScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            const Positioned(top: 6, left: 20, child: CircleBackButton()),
             SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
@@ -121,6 +120,9 @@ class _PairingScreenState extends State<PairingScreen> {
                 ],
               ),
             ),
+            // 스크롤뷰의 제스처 인식기가 겹쳐진 자리의 탭을 먼저 가로채므로,
+            // Stack에서 나중에(=위에) 그려지는 이 위치에 둬야 실제로 눌린다.
+            const Positioned(top: 6, left: 20, child: CircleBackButton()),
           ],
         ),
       ),
