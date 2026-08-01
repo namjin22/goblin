@@ -89,7 +89,13 @@ class _PairingScreenState extends State<PairingScreen> {
                           _FieldLabel('모듈 고유 번호'),
                           _FieldBox(controller: _moduleController, hint: '기기 뒷면의 번호', keyboardType: TextInputType.number),
                           _FieldLabel('서버 주소'),
-                          _FieldBox(controller: _serverController, hint: 'http://노트북IP:5000'),
+                          _FieldBox(
+                            controller: _serverController,
+                            hint: 'http://노트북IP:5000',
+                            keyboardType: TextInputType.url,
+                            align: TextAlign.left,
+                            fontSize: 12,
+                          ),
                           if (_error != null) ...[
                             const SizedBox(height: 8),
                             Text(_error!, style: const TextStyle(color: AppColors.statusRedText, fontWeight: FontWeight.w600, fontSize: 13)),
@@ -139,11 +145,19 @@ class _FieldLabel extends StatelessWidget {
 }
 
 class _FieldBox extends StatelessWidget {
-  const _FieldBox({required this.controller, this.hint, this.keyboardType});
+  const _FieldBox({
+    required this.controller,
+    this.hint,
+    this.keyboardType,
+    this.align = TextAlign.center,
+    this.fontSize = 13,
+  });
 
   final TextEditingController controller;
   final String? hint;
   final TextInputType? keyboardType;
+  final TextAlign align;
+  final double fontSize;
 
   @override
   Widget build(BuildContext context) {
@@ -156,13 +170,17 @@ class _FieldBox extends StatelessWidget {
         border: Border.all(color: AppColors.line, width: 1.5),
       ),
       alignment: Alignment.center,
+      // 서버 주소처럼 긴 값은 가운데 정렬하면 시작 부분이 잘려 보이고
+      // 읽기 어려워서, 필드별로 정렬/글자크기를 다르게 줄 수 있게 했다.
+      padding: align == TextAlign.left ? const EdgeInsets.symmetric(horizontal: 10) : null,
       child: TextField(
         controller: controller,
-        textAlign: TextAlign.center,
+        textAlign: align,
         keyboardType: keyboardType,
-        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink),
+        style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w600, color: AppColors.ink),
         decoration: InputDecoration(
           hintText: hint,
+          hintStyle: TextStyle(fontSize: fontSize, color: AppColors.sub),
           border: InputBorder.none,
           isCollapsed: true,
         ),

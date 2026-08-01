@@ -48,6 +48,9 @@ def parse_args():
                    help="앱에 실시간 웹캠 미리보기 제공 (실험적 - 웹캠을 "
                         "0.5초마다 읽어서 메인 루프가 멈출 위험이 있다고 "
                         "의심됨. 기본은 꺼짐)")
+    p.add_argument("--skip-vent-confirm", action="store_true",
+                   help="환기창 닫힘 확인 프롬프트 생략 (문이 항상 닫혀있는 "
+                        "게 확실할 때만. 데모 녹화 등)")
     return p.parse_args()
 
 
@@ -81,6 +84,14 @@ def main():
 
     store = Store()
     store.update(mock=mock_hw)
+
+    # [중요] 환기창은 "절대각 0 = 닫힘"이 아니라, 연결하는 바로 이 순간의
+    # 각도를 닫힘 기준으로 저장한다(hardware.calibrate_vent_home). 그래서
+    # 이 시점에 문이 실제로 닫혀 있지 않으면 그 뒤로 계속 엉뚱한 위치로
+    # 움직인다 - "모터가 이상하게 움직인다"는 문제가 대부분 이거다.
+    if not mock_hw and not args.skip_vent_confirm:
+        input("환기창을 완전히 닫아둔 상태인지 확인하고 Enter를 누르세요"
+              " (매번 확인 귀찮으면 --skip-vent-confirm) ")
 
     # 1) 하드웨어 연결
     try:
