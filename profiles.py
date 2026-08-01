@@ -31,29 +31,21 @@ CROP_PROFILES = {
         "note": "고온에서 웃자람",
         "grow_days": 30,
     },
-    "pepper": {
-        "name": "고추",
-        "vent_temp": 30,
-        "min_lux": 5,
-        "dry_limit": 70,
-        "note": "저온에서 생육 정지",
-        "grow_days": 70,
+    "corn": {
+        "name": "옥수수",
+        "vent_temp": 28,
+        "min_lux": 6,
+        "dry_limit": 70,          # 뿌리가 깊어 가뭄엔 비교적 강함
+        "note": "고온성, 광량 많이 필요",
+        "grow_days": 90,
     },
-    "tomato": {
-        "name": "토마토",
-        "vent_temp": 27,
-        "min_lux": 5,
-        "dry_limit": 70,
-        "note": "과습 시 열과",
-        "grow_days": 80,
-    },
-    "cabbage": {
-        "name": "배추",
+    "carrot": {
+        "name": "당근",
         "vent_temp": 20,
-        "min_lux": 3,
-        "dry_limit": 55,
-        "note": "고온 시 결구 불량",
-        "grow_days": 70,
+        "min_lux": 4,
+        "dry_limit": 45,          # 뿌리 비대기에 수분 불균일하면 갈라짐 -> 일찍 급수
+        "note": "서늘한 걸 선호, 균일한 수분 필요",
+        "grow_days": 75,
     },
 }
 

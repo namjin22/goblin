@@ -12,9 +12,14 @@ MockVision 덕분에 웹캠 없이도 전체 시스템이 돌아간다.
 import json
 import os
 import random
+import sys
 import time
 
 CALIB_PATH = "calib.json"
+MODEL_DIR = "models"
+MODEL_PATH = os.path.join(MODEL_DIR, "crop_classifier.pt")
+CLASS_MAP_PATH = os.path.join(MODEL_DIR, "class_map.json")
+MODEL_CONF_THRESHOLD = 0.6   # 이보다 확신이 낮으면 HSV 폴백으로 넘긴다
 
 # 화면에서 흙이 차지하는 영역 (가로/세로 비율)
 # 실제 배치에 맞게 조정할 것. 화면 아래쪽 가운데를 흙으로 본다.
@@ -35,11 +40,48 @@ class Vision:
     def __init__(self, cam_index=0):
         import cv2  # 이 파일 안에서만 import
         self.cv2 = cv2
-        self.cap = cv2.VideoCapture(cam_index)
+
+        # [중요] Windows 기본 백엔드(MSMF)는 여는 데 20초 가까이 걸리고,
+        # 촬영 중간에 "can't grab frame" 에러로 프레임을 계속 못 읽는 경우가
+        # 실측됐다. DirectShow(CAP_DSHOW)가 훨씬 빠르고(7초대) 안정적이었다.
+        backend = cv2.CAP_DSHOW if sys.platform.startswith("win") else 0
+        self.cap = cv2.VideoCapture(cam_index, backend)
         if not self.cap.isOpened():
             raise RuntimeError("웹캠을 열 수 없다. cam_index를 확인할 것.")
         self.calib = self.load_calib()
+        self._model = None
+        self._class_map = None
+        self._preprocess = None
+        self._model_tried = False
         time.sleep(1)   # 카메라 노출 안정화
+
+    # ------------------------------------------------------ 딥러닝 모델
+    def _load_model(self):
+        """학습된 분류기를 지연 로드한다 (한 번만 시도).
+
+        모델 파일이 없거나 torch가 없으면 조용히 넘어가고, 이후로는
+        classify_crop이 계속 HSV 폴백만 쓴다. 대회장에 인터넷이 없어도
+        되도록 pretrained=False로 빈 뼈대만 만들고 state_dict로 채운다.
+        """
+        self._model_tried = True
+        if not (os.path.exists(MODEL_PATH) and os.path.exists(CLASS_MAP_PATH)):
+            print("[VISION] 학습된 모델이 없다 (%s). HSV 폴백만 쓴다." % MODEL_PATH)
+            return
+        try:
+            import torch
+            from crop_model import build_model, preprocess
+
+            with open(CLASS_MAP_PATH, "r", encoding="utf-8") as f:
+                class_map = json.load(f)
+            model = build_model(len(class_map), pretrained=False)
+            model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
+            model.eval()
+            self._model = model
+            self._class_map = class_map
+            self._preprocess = preprocess
+            print("[VISION] 딥러닝 분류기 로드 완료:", class_map)
+        except Exception as e:
+            print("[VISION] 딥러닝 모델 로드 실패, HSV 폴백만 쓴다:", e)
 
     # ------------------------------------------------------ 캘리브레이션
     def load_calib(self):
@@ -113,53 +155,66 @@ class Vision:
 
     # ------------------------------------------------------ 작물 분류
     def classify_crop(self, frame):
-        """HSV 규칙 기반 작물 분류 (1차안).
+        """작물 분류. 딥러닝 모델이 있으면 그게 주 수단, 없거나 확신이 낮으면 HSV 폴백.
 
-        딥러닝은 시간이 남을 때만. 이 규칙만으로 완주 가능해야 한다.
-        아래 임계값은 반드시 현장 조명에서 다시 잡을 것.
+        [중요] 대회 규정상 실제 작물을 반입할 수 없어 레고 브릭으로 대신한다.
+        시연 작물은 상추/옥수수/당근 3종으로 확정됐다 (profiles.py 참고).
+        """
+        if not self._model_tried:
+            self._load_model()
 
-        구분 기준
-          - 붉은 기가 강하면        -> 토마토 또는 고추
-          - 초록이 밝고 연하면      -> 상추
-          - 초록이 진하고 채도 높으면 -> 배추
+        roi = _crop(frame, CROP_ROI)
+
+        if self._model is not None:
+            result = self._classify_crop_model(roi)
+            if result is not None:
+                return result
+
+        return self._classify_crop_hsv(roi)
+
+    def _classify_crop_model(self, roi):
+        """딥러닝 분류. 확신이 낮거나(background 포함) 실패하면 None을 반환해 HSV로 넘긴다."""
+        import torch
+
+        try:
+            with torch.no_grad():
+                tensor = self._preprocess(roi)
+                logits = self._model(tensor)
+                probs = torch.softmax(logits, dim=1)[0]
+                idx = int(probs.argmax())
+                conf = float(probs[idx])
+        except Exception as e:
+            print("[VISION] 모델 추론 실패, HSV로 넘긴다:", e)
+            return None
+
+        name = self._class_map[idx]
+        if name == "background" or conf < MODEL_CONF_THRESHOLD:
+            return None
+        return name
+
+    def _classify_crop_hsv(self, roi):
+        """HSV 규칙 기반 작물 분류 (폴백용).
+
+        옥수수·당근은 브릭 배색이 아직 정해지지 않아 규칙을 만들 수 없다.
+        브릭 색이 정해지면 여기에 판단을 추가할 것.
+        지금은 상추(초록)만 규칙으로 인식하고, 나머지는 판단 보류(None).
         """
         cv2 = self.cv2
-        roi = _crop(frame, CROP_ROI)
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
         h = hsv[:, :, 0].astype("float")
         s = hsv[:, :, 1].astype("float")
-        v = hsv[:, :, 2].astype("float")
 
         total = h.size
         if total == 0:
             return None
 
-        # OpenCV의 Hue 범위는 0~179
-        red_mask = ((h < 10) | (h > 170)) & (s > 90)
         green_mask = (h > 35) & (h < 85) & (s > 50)
-
-        red_ratio = red_mask.sum() / total
         green_ratio = green_mask.sum() / total
 
-        if red_ratio > 0.15:
-            # 붉은 물체의 형태로 토마토/고추를 가른다.
-            # 세로로 긴 형태면 고추, 둥글면 토마토.
-            ys, xs = red_mask.nonzero()
-            if len(xs) > 50:
-                width = xs.max() - xs.min() + 1
-                height = ys.max() - ys.min() + 1
-                if height > width * 1.6:
-                    return "pepper"
-            return "tomato"
-
         if green_ratio > 0.20:
-            mean_s = float(s[green_mask].mean()) if green_mask.any() else 0
-            mean_v = float(v[green_mask].mean()) if green_mask.any() else 0
-            if mean_v > 130 and mean_s < 140:
-                return "lettuce"
-            return "cabbage"
+            return "lettuce"
 
-        return None   # 판단 보류. 기존 작물을 유지한다.
+        return None   # 옥수수/당근/판단 보류. 기존 작물을 유지한다.
 
 
 class MockVision:

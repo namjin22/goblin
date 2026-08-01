@@ -2,7 +2,8 @@
 """농깨비 메인 루프.
 
 실행
-  python main.py --mock          하드웨어·웹캠 없이 (개발용)
+  python main.py --mock          하드웨어·웹캠 둘 다 없이 (개발용)
+  python main.py --mock-hw       MODI만 없이, 웹캠은 실물 (비전 기능 개발용)
   python main.py                 실물 MODI + 웹캠
   python main.py --ble UUID      BLE 무선 (마지막 리허설에서만)
   python main.py --calib wet     젖은 흙 기준 잡기
@@ -32,6 +33,9 @@ def parse_args():
     p = argparse.ArgumentParser(description="농깨비 - 묻지 않고 알아서 돌보는 스마트팜")
     p.add_argument("--mock", action="store_true",
                    help="MODI·웹캠 없이 가짜 하드웨어로 실행")
+    p.add_argument("--mock-hw", action="store_true",
+                   help="MODI만 가짜로 실행하고 웹캠은 실물을 쓴다 "
+                        "(MODI 없이 비전 기능만 개발할 때)")
     p.add_argument("--ble", metavar="UUID", default=None,
                    help="BLE 무선 연결 (network uuid)")
     p.add_argument("--cam", type=int, default=0, help="웹캠 인덱스")
@@ -69,22 +73,24 @@ def main():
     if args.calib:
         return run_calibration(args)
 
+    mock_hw = args.mock or args.mock_hw
+
     store = Store()
-    store.update(mock=args.mock)
+    store.update(mock=mock_hw)
 
     # 1) 하드웨어 연결
     try:
         hw = build_hardware(
-            mock=args.mock,
+            mock=mock_hw,
             conn_type="ble" if args.ble else None,
             network_uuid=args.ble,
         )
     except Exception as e:
         print("[오류] 하드웨어 연결 실패:", e)
-        print("       --mock 으로 실행하면 하드웨어 없이 개발할 수 있다.")
+        print("       --mock 또는 --mock-hw 로 실행하면 MODI 없이 개발할 수 있다.")
         return 1
 
-    # 2) 비전 준비 (웹캠 실패 시 자동으로 Mock)
+    # 2) 비전 준비 (--mock-hw만 줬으면 웹캠은 실물을 쓴다. 실패 시 자동으로 Mock)
     vision = build_vision(mock=args.mock, cam_index=args.cam)
 
     # 3) API 서버 시작
@@ -108,7 +114,7 @@ def main():
     print("=" * 56)
     print(" 농깨비 - 묻지 않고 알아서 돌보는 스마트팜")
     print(" 모드: %s | 자동조치: %s" % (
-        "MOCK" if args.mock else "실물",
+        "MOCK" if args.mock else ("MOCK-HW(웹캠 실물)" if mock_hw else "실물"),
         "끔" if args.no_auto else "켬",
     ))
     print(" 종료하려면 Ctrl+C")
