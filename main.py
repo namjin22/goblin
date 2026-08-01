@@ -44,6 +44,10 @@ def parse_args():
                    help="자동 조치를 끄고 수동 조작만 받는다")
     p.add_argument("--calib", choices=["wet", "dry"], default=None,
                    help="흙 캘리브레이션만 수행하고 종료")
+    p.add_argument("--camera-preview", action="store_true",
+                   help="앱에 실시간 웹캠 미리보기 제공 (실험적 - 웹캠을 "
+                        "0.5초마다 읽어서 메인 루프가 멈출 위험이 있다고 "
+                        "의심됨. 기본은 꺼짐)")
     return p.parse_args()
 
 
@@ -97,7 +101,7 @@ def main():
     start_server(store, port=args.port)
 
     # 4) 제어기
-    ctrl = Controller(hw, store, vision=vision)
+    ctrl = Controller(hw, store, vision=vision, camera_preview=args.camera_preview)
 
     # Mock 환경에서는 급수 시 건조도가 실제로 회복되도록 연결해둔다.
     if hasattr(vision, "on_water"):

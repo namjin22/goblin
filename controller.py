@@ -99,10 +99,15 @@ RAIN_HUMIDITY_THRESHOLD = 85.0
 class Controller:
     """센서값을 판단하고 액추에이터를 움직인다. 메인 루프에서만 쓴다."""
 
-    def __init__(self, hw, store, vision=None):
+    def __init__(self, hw, store, vision=None, camera_preview=False):
         self.hw = hw
         self.store = store
         self.vision = vision
+        # [기본 꺼짐] 실시간 미리보기가 vision.capture()를 훨씬 자주(0.5초마다)
+        # 부르는데, 실물 테스트에서 이게 메인 루프를 통째로 멈추게 하는
+        # 것으로 의심됨(웹캠 드라이버가 잦은 호출에 멈추는 듯) - 분류용
+        # 6초 주기 촬영은 안정적이었다. 확실해지기 전까진 기본 꺼둔다.
+        self.camera_preview = camera_preview
 
         self._busy_until = 0.0
         self._busy_action = None
@@ -427,9 +432,10 @@ class Controller:
             dryness=humidity_to_dryness(env["humidity"]),
         )
 
-        # 2) 주기적 촬영 (분류) + 실시간 미리보기 프레임
+        # 2) 주기적 촬영 (분류) + (기본 꺼짐) 실시간 미리보기 프레임
         self.update_scan()
-        self.update_camera_frame()
+        if self.camera_preview:
+            self.update_camera_frame()
 
         # 3) 판단
         snap = self.store.snapshot()
