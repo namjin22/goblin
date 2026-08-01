@@ -20,6 +20,8 @@ except ImportError:
     print("pymodi-plus가 없다.  pip install pymodi-plus")
     sys.exit(1)
 
+from hardware import ModiHardware
+
 
 def line(title):
     print()
@@ -56,7 +58,10 @@ def connect():
     }
     print("\n  모듈 개수:", counts)
 
-    missing = [k for k, v in counts.items() if v == 0]
+    # ToF/Dial/Button은 이 프로젝트에서 아예 안 쓰는 모듈이라(수동 조작은 앱으로만)
+    # 없어도 경고 대상이 아니다. 진짜 필요한 모듈만 빠졌는지 확인한다.
+    UNUSED = {"tof", "dial", "button"}
+    missing = [k for k, v in counts.items() if v == 0 and k not in UNUSED]
     if missing:
         print("\n  [경고] 인식 안 된 모듈:", ", ".join(missing))
         print("         케이블을 다시 꽂고 python -m modi_plus --inspect 확인")
@@ -98,7 +103,7 @@ def test_outputs(bundle, results):
 
 
 def test_sensors(bundle, results):
-    line("3. 입력 모듈 (Env / ToF / Dial / Button)")
+    line("3. 입력 모듈 (Env / ToF / Dial)")
 
     if bundle.envs:
         env = bundle.envs[0]
@@ -124,20 +129,6 @@ def test_sensors(bundle, results):
             print("    각도 %d" % dial.turn)
             time.sleep(0.5)
         results["Dial"] = ask("돌릴 때 숫자가 변했나?")
-
-    if bundle.buttons:
-        button = bundle.buttons[0]
-        print("  Button: 10초 안에 버튼을 눌러보세요")
-        detected = False
-        for _ in range(100):
-            if button.clicked:
-                print("    클릭 감지!")
-                detected = True
-                break
-            time.sleep(0.1)
-        results["Button"] = detected
-        if not detected:
-            print("    시간 초과. 버튼이 감지되지 않았다.")
 
 
 def test_motors(bundle, results):
@@ -175,7 +166,7 @@ def test_motors(bundle, results):
         print("    환기창 모터B = motors[%d]" % roles["vent_b"])
         print("    스프링클러   = motors[%d]" % roles["sprinkler"])
         print()
-        if roles["vent_a"] == 0 and roles["vent_b"] == 1 and roles["sprinkler"] == 2:
+        if roles["vent_a"] == 2 and roles["vent_b"] == 0 and roles["sprinkler"] == 1:
             print("  hardware.py 기본값 그대로 쓰면 된다. 수정 불필요.")
         else:
             print("  [중요] hardware.py 위쪽을 아래처럼 고칠 것:")
@@ -187,17 +178,32 @@ def test_motors(bundle, results):
         print("  모터 역할을 특정하지 못했다. 다시 실행해볼 것.")
         results["Motor"] = False
 
-    # 환기창 두 모터가 반대 방향으로 함께 움직이는지 확인
+    # 환기창 두 모터가 함께 움직이는지 확인.
+    # hardware.py의 open_vent()/close_vent()를 그대로 호출한다 - 여기서 각도
+    # 계산을 따로 하면 나중에 hardware.py를 고쳐도 이 데모는 안 고쳐져서
+    # 서로 다른 동작을 테스트하게 될 위험이 있다.
     if "vent_a" in roles and "vent_b" in roles:
-        vent_a = motors[roles["vent_a"]]
-        vent_b = motors[roles["vent_b"]]
-        print("\n  환기창 각도 제어 확인: 0도 -> (A -250 / B +250) -> 0도")
-        print("  (블록코딩에서 확인된 값. pymodi_plus에서도 절대각으로 동작하는지 확인)")
-        for label, a_angle, b_angle in [("열기", -250, 250), ("닫기", 0, 0)]:
-            vent_a.angle = a_angle, 50
-            vent_b.angle = b_angle, 50
-            print("    %s: A=%d도 B=%d도" % (label, a_angle, b_angle))
-            time.sleep(2.5)
+        hw = ModiHardware()
+        hw.vent_motor_a = motors[roles["vent_a"]]
+        hw.vent_motor_b = motors[roles["vent_b"]]
+
+        # [중요] 바로 위 식별 단계에서 motor.speed = 40 으로 2.5초씩 돌렸기
+        # 때문에, 두 모터는 지금 "어디인지 모르는" 임의의 각도에 서 있다.
+        # .angle이 절대 목표각이라면, 이 상태에서 곧바로 열기를 시도하면
+        # 모터마다 실제로 움직여야 하는 양이 완전히 달라진다(하나는 이미
+        # 근처라 거의 안 움직이고, 하나는 반대편이라 훨씬 많이 움직이는 식).
+        # 그래서 먼저 닫힘(0도)으로 맞춰서 같은 기준점에서 시작하게 한다.
+        print("\n  (식별 단계에서 임의 위치로 돌아갔을 수 있어 먼저 닫힘 상태로 맞춘다)")
+        hw.close_vent(speed=50)
+        time.sleep(2.5)
+
+        print("  환기창 열기/닫기 확인 (hardware.py의 open_vent/close_vent 그대로 호출)")
+        print("    여는 중...")
+        hw.open_vent(speed=50)
+        time.sleep(2.5)
+        print("    닫는 중...")
+        hw.close_vent(speed=50)
+        time.sleep(2.5)
         results["Vent angle"] = ask("환기창이 열렸다 닫혔나?")
 
 
@@ -224,7 +230,7 @@ def main():
     results = {}
     bundle = None
     try:
-        bundle, counts = connect()
+        bundle, _ = connect()
 
         run_all = not (args.motor or args.sensor)
         if run_all:

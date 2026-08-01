@@ -58,15 +58,14 @@ Flask 스레드  상태 읽기, 명령 큐에 넣기. 하드웨어 절대 금지
 |---|---|
 | Network ×2 | USB 연결. 한 USB에 체인으로 연결 |
 | Env | 온도 → 환기 판단 / 조도 → 생장등 판단 / 습도 → 건조도(급수)·비 감지(자동 닫기) 판단 |
-| Button | **창문 열기/닫기 토글** — 이 일만 한다 |
 | LED | **생장등**. 주변이 어두우면 켠다 (마젠타) |
 | Display | 2줄 짧은 단어 |
 | Speaker | alert 진입 순간 0.4초 삑 |
-| Motor A | 환기창 (모터B와 반대 방향으로 함께 움직여야 열림/닫힘) |
+| Motor A | 환기창 (모터B와 함께 움직여야 열림/닫힘, 거울 대칭 장착) |
 | Motor B | 환기창 |
 | Motor (스프링클러) | 스프링클러 (모형, 물 안 나옴) |
 
-미사용: **ToF**, IMU, Joystick, Dial
+미사용: **ToF**, IMU, Joystick, Dial, **Button** (물리 버튼 없음 — 수동 조작은 앱 전용)
 
 ## 출력 규칙
 
@@ -111,7 +110,7 @@ ToF를 쓰지 않으므로 **6초마다 자동으로 촬영**한다 (`SCAN_INTER
 
 ## 환기창
 
-기본은 자동으로 **열기만** 한다. 닫는 것은 사람이 한다 (Button 또는 앱).
+기본은 자동으로 **열기만** 한다. 닫는 것은 사람이 앱으로 한다 (물리 버튼 없음).
 단, Env 습도가 비정상적으로 높으면("비가 오는 것 같음") 자동으로 닫는 예외가 하나 있다 (`controller.RAIN_HUMIDITY_THRESHOLD`).
 
 ## 앱 담당자용 API
@@ -197,16 +196,19 @@ ToF를 쓰지 않으므로 **6초마다 자동으로 촬영**한다 (`SCAN_INTER
 
 ## 남은 작업
 
-1. **`min_lux` 현장 튜닝** — 생장등 켰을 때와 껐을 때 조도를 각각 재서 그 중간으로 `profiles.py`를 고칠 것. `python hwtest.py --sensor`
-2. **`RAIN_HUMIDITY_THRESHOLD` 현장 튜닝** — 실제 습도 값을 보고 "비" 오탐이 안 나도록 `controller.py`에서 조정.
-3. 딥러닝 분류기(`lettuce`/`corn`/`carrot`/`background`)는 학습 완료됨. 조명·배치가 바뀌면 `collect_data.py`로 재촬영 + `train_crop_model.py` 재학습.
+1. **환기창 모터 각도 재확인** — 처음 250도/반대부호로 테스트했다가 실패해서 150도/같은부호로 고침. `python hwtest.py --motor`로 실제로 문이 잘 열리고 닫히는지 다시 확인할 것.
+2. **`min_lux` 현장 튜닝** — 생장등 켰을 때와 껐을 때 조도를 각각 재서 그 중간으로 `profiles.py`를 고칠 것. `python hwtest.py --sensor`
+3. **`RAIN_HUMIDITY_THRESHOLD` 현장 튜닝** — 실제 습도 값을 보고 "비" 오탐이 안 나도록 `controller.py`에서 조정.
+4. 딥러닝 분류기(`lettuce`/`corn`/`carrot`/`background`)는 학습 완료됨. 조명·배치가 바뀌면 `collect_data.py`로 재촬영 + `train_crop_model.py` 재학습.
 
 ## 하드웨어 배치
 
 ```
 motors[VENT_MOTOR_A_INDEX]    = 환기창 모터A
-motors[VENT_MOTOR_B_INDEX]    = 환기창 모터B (모터A와 반대 방향으로 함께 움직여야 열림/닫힘)
+motors[VENT_MOTOR_B_INDEX]    = 환기창 모터B (모터A와 거울 대칭 장착 - 같은 각도를 줘야 열림/닫힘)
 motors[SPRINKLER_MOTOR_INDEX] = 스프링클러 (모형. 실제로 물은 안 나온다)
 ```
+
+2026-08-01 실측값: `VENT_MOTOR_A_INDEX=2`, `VENT_MOTOR_B_INDEX=0`, `SPRINKLER_MOTOR_INDEX=1`, 회전각 150도. 장비마다 다를 수 있으니 `python hwtest.py --motor`로 매번 재확인할 것.
 
 환기창 두 모터 중 하나라도 없으면 연결 자체가 실패한다(`HardwareError`). 스프링클러 모터만 없으면 경고만 뜨고 나머지는 정상 동작한다.

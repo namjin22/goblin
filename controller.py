@@ -9,13 +9,12 @@
 
 [모듈 역할]
   Env       온도 -> 환기 판단 / 조도 -> 생장등 판단 / 습도 -> 건조도(급수)·비 감지 판단
-  Button    창문 열기/닫기 토글 (이 일만 한다)
   LED       생장등 (조도가 낮으면 켠다)
   Display   짧은 단어 2줄
   Speaker   alert 진입 순간에만 짧게 삑 (온열질환 예방 경고 포함)
-  Motor A/B 환기창 (두 모터가 반대 방향으로 함께 움직여야 열리고 닫힌다)
+  Motor A/B 환기창 (두 모터가 함께 움직여야 열리고 닫힌다)
   Motor     스프링클러
-  * ToF, Dial, IMU, Joystick 미사용
+  * ToF, Dial, IMU, Joystick, Button 미사용 - 물리 버튼 없이 수동 조작은 앱으로만 한다
 """
 
 import os
@@ -157,7 +156,7 @@ class Controller:
     def toggle_vent(self):
         """열려 있으면 닫고, 닫혀 있으면 연다.
 
-        사람이 Button 또는 앱으로 조작할 때 쓴다. 자동 조치는 decide()의
+        사람이 앱으로 조작할 때 쓴다(물리 버튼 없음). 자동 조치는 decide()의
         auto_action("vent_open"/"vent_close")을 통해서만 닫거나 연다 - 온도로
         열기, 비 감지(습도)로 닫기 두 경우만 자동이고 그 외엔 사람이 한다.
         """
@@ -406,21 +405,13 @@ class Controller:
         self.render_display(snap.get("crop_name", "확인 중"), short)
         self.render_sound(level)
 
-        # 5) 하드웨어 버튼 -> 창문 열기/닫기
-        #    Button은 오직 이 일만 한다. 역할이 하나여야 헷갈리지 않는다.
-        if self.hw.read_button():
-            if not self.busy:
-                self.toggle_vent()
-                self.store.add_history("button", "버튼으로 창문을 조작했습니다")
-            return
-
-        # 6) 앱에서 온 명령
+        # 5) 앱에서 온 명령 (물리 버튼 없음 - 수동 조작은 앱으로만 한다)
         pending = self.store.pop_command()
         if pending and not self.busy:
             self.handle_command(pending["cmd"])
             return
 
-        # 7) 자동 조치
+        # 6) 자동 조치
         #    사람이 승인하지 않아도 시스템이 알아서 하는 부분.
         #    "묻지 않는다"의 실체다.
         #    [예외] 환기창을 자동으로 닫는 건 "비 감지"(RAIN_HUMIDITY_THRESHOLD)
