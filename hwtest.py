@@ -20,6 +20,8 @@ except ImportError:
     print("pymodi-plus가 없다.  pip install pymodi-plus")
     sys.exit(1)
 
+from hardware import ModiHardware
+
 
 def line(title):
     print()
@@ -176,18 +178,32 @@ def test_motors(bundle, results):
         print("  모터 역할을 특정하지 못했다. 다시 실행해볼 것.")
         results["Motor"] = False
 
-    # 환기창 두 모터가 함께 움직이는지 확인
-    # (A/B가 거울 대칭으로 달려서, 같은 부호를 줘야 실제로는 마주보고 반대로 열린다 -
-    #  2026-08-01 실측 확인. 처음엔 반대 부호로 가정했다가 A가 반대로 도는 걸 보고 고쳤다.)
+    # 환기창 두 모터가 함께 움직이는지 확인.
+    # hardware.py의 open_vent()/close_vent()를 그대로 호출한다 - 여기서 각도
+    # 계산을 따로 하면 나중에 hardware.py를 고쳐도 이 데모는 안 고쳐져서
+    # 서로 다른 동작을 테스트하게 될 위험이 있다.
     if "vent_a" in roles and "vent_b" in roles:
-        vent_a = motors[roles["vent_a"]]
-        vent_b = motors[roles["vent_b"]]
-        print("\n  환기창 각도 제어 확인: 0도 -> (A +150 / B +150) -> 0도")
-        for label, a_angle, b_angle in [("열기", 150, 150), ("닫기", 0, 0)]:
-            vent_a.angle = a_angle, 50
-            vent_b.angle = b_angle, 50
-            print("    %s: A=%d도 B=%d도" % (label, a_angle, b_angle))
-            time.sleep(2.5)
+        hw = ModiHardware()
+        hw.vent_motor_a = motors[roles["vent_a"]]
+        hw.vent_motor_b = motors[roles["vent_b"]]
+
+        # [중요] 바로 위 식별 단계에서 motor.speed = 40 으로 2.5초씩 돌렸기
+        # 때문에, 두 모터는 지금 "어디인지 모르는" 임의의 각도에 서 있다.
+        # .angle이 절대 목표각이라면, 이 상태에서 곧바로 열기를 시도하면
+        # 모터마다 실제로 움직여야 하는 양이 완전히 달라진다(하나는 이미
+        # 근처라 거의 안 움직이고, 하나는 반대편이라 훨씬 많이 움직이는 식).
+        # 그래서 먼저 닫힘(0도)으로 맞춰서 같은 기준점에서 시작하게 한다.
+        print("\n  (식별 단계에서 임의 위치로 돌아갔을 수 있어 먼저 닫힘 상태로 맞춘다)")
+        hw.close_vent(speed=50)
+        time.sleep(2.5)
+
+        print("  환기창 열기/닫기 확인 (hardware.py의 open_vent/close_vent 그대로 호출)")
+        print("    여는 중...")
+        hw.open_vent(speed=50)
+        time.sleep(2.5)
+        print("    닫는 중...")
+        hw.close_vent(speed=50)
+        time.sleep(2.5)
         results["Vent angle"] = ask("환기창이 열렸다 닫혔나?")
 
 
