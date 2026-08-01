@@ -76,7 +76,7 @@ class _PairingScreenState extends State<PairingScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const SizedBox(height: 44),
+                  const SizedBox(height: 20),
                   HeroGroup(
                     bubbleText: '몇 가지만\n알려주시면 돼요!',
                     pose: MascotPose.wave,
@@ -91,10 +91,10 @@ class _PairingScreenState extends State<PairingScreen> {
                           _FieldLabel('서버 주소'),
                           _FieldBox(controller: _serverController, hint: 'http://노트북IP:5000'),
                           if (_error != null) ...[
-                            const SizedBox(height: 10),
-                            Text(_error!, style: const TextStyle(color: AppColors.statusRedText, fontWeight: FontWeight.w600, fontSize: 15)),
+                            const SizedBox(height: 8),
+                            Text(_error!, style: const TextStyle(color: AppColors.statusRedText, fontWeight: FontWeight.w600, fontSize: 13)),
                           ],
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 14),
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton(
@@ -129,10 +129,10 @@ class _FieldLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 20, bottom: 8),
+      padding: const EdgeInsets.only(top: 12, bottom: 4),
       child: Align(
         alignment: Alignment.center,
-        child: Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.ink)),
+        child: Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.ink)),
       ),
     );
   }
@@ -149,10 +149,10 @@ class _FieldBox extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      height: 52,
+      height: 42,
       decoration: BoxDecoration(
         color: const Color(0xFFFAFAFA),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.line, width: 2),
       ),
       alignment: Alignment.center,
@@ -160,7 +160,7 @@ class _FieldBox extends StatelessWidget {
         controller: controller,
         textAlign: TextAlign.center,
         keyboardType: keyboardType,
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.ink),
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.ink),
         decoration: InputDecoration(
           hintText: hint,
           border: InputBorder.none,
