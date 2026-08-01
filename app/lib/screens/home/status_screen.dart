@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../models/farm_status.dart';
 import '../../services/farm_api.dart';
+import '../../services/server_config.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/scrollable_fill.dart';
 
@@ -53,56 +54,134 @@ class _StatusScreenState extends State<StatusScreen> {
     }
   }
 
+  Future<void> _editServerAddress() async {
+    final controller = TextEditingController(text: ServerConfig.baseUrl);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('서버 주소'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(hintText: 'http://노트북IP:5000'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
+    if (result == null || result.trim().isEmpty) return;
+    await ServerConfig.setBaseUrl(result);
+    _hasRealData = false;   // 새 주소로 다시 연결 시도하도록 리셋
+    _refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     return ScrollableFill(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Stack(
         children: [
-          const _CameraPreview(),
-          const SizedBox(height: 14),
-          _StatusCard(state: _state),
-          const SizedBox(height: 14),
-          _FactsGrid(state: _state),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const _CameraPreview(),
+              const SizedBox(height: 14),
+              _StatusCard(state: _state),
+              const SizedBox(height: 14),
+              _FactsGrid(state: _state),
+            ],
+          ),
+          // 페어링은 한 번만 하고 다시 안 물어보므로, 서버 주소만 나중에
+          // 바꿀 수 있게 여기 작은 버튼을 둔다 (재페어링 없이도 가능).
+          Positioned(
+            top: 4,
+            right: 0,
+            child: IconButton(
+              icon: const Icon(Icons.settings_outlined, color: AppColors.sub, size: 22),
+              onPressed: _editServerAddress,
+              tooltip: '서버 주소 설정',
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _CameraPreview extends StatelessWidget {
+/// server.py `/camera/snapshot.jpg`를 주기적으로 다시 요청해서 "실시간처럼"
+/// 보여준다. 연결을 계속 열어두는 스트림 방식은 메인 루프를 막을 위험이
+/// 있어서 쓰지 않는다(hardware.py/controller.py 주석 참고).
+///
+/// [주의] 서버가 --camera-preview 옵션 없이 켜져 있으면(기본값) 프레임이
+/// 아예 없어서 계속 실패 상태로 보인다 - 웹캠을 너무 자주 읽으면 메인
+/// 루프가 멈출 수 있다는 의심 때문에 기본은 꺼져 있다.
+class _CameraPreview extends StatefulWidget {
   const _CameraPreview();
 
   @override
+  State<_CameraPreview> createState() => _CameraPreviewState();
+}
+
+class _CameraPreviewState extends State<_CameraPreview> {
+  Timer? _timer;
+  int _tick = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _tick++);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // TODO: vision.py 웹캠 프레임을 MJPEG 등으로 받아 실제 영상으로 교체 — 현재 server.py엔 영상 스트리밍 엔드포인트가 없다.
     return Container(
       width: double.infinity,
       height: 200,
       decoration: BoxDecoration(color: AppColors.camPreview, borderRadius: BorderRadius.circular(20)),
-      child: Stack(
-        children: [
-          const Center(
-            child: Text('웹캠 미리보기', style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
-          ),
-          Positioned(
-            top: 10,
-            left: 12,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
-              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(20)),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircleAvatar(radius: 3.5, backgroundColor: Color(0xFFFF5B5B)),
-                  SizedBox(width: 5),
-                  Text('실시간', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
-                ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(
+              '${FarmApi.baseUrl}/camera/snapshot.jpg?t=$_tick',
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              errorBuilder: (context, error, stack) => const Center(
+                child: Text('웹캠 미리보기 없음', style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
               ),
             ),
-          ),
-        ],
+            Positioned(
+              top: 10,
+              left: 12,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
+                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(20)),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(radius: 3.5, backgroundColor: Color(0xFFFF5B5B)),
+                    SizedBox(width: 5),
+                    Text('실시간', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
