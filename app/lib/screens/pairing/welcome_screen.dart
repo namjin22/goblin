@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/hero_card.dart';
 import '../../widgets/hero_group.dart';
 import '../../widgets/mascot.dart';
+import '../../widgets/scrollable_fill.dart';
 import '../home/home_shell.dart';
 
 class WelcomeScreen extends StatelessWidget {
@@ -14,7 +15,7 @@ class WelcomeScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F9F5),
       body: SafeArea(
-        child: Padding(
+        child: ScrollableFill(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
