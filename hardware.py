@@ -47,7 +47,7 @@ SPRINKLER_MOTOR_INDEX = 1
 # 확정할 것 - 지금 값은 첫 시도 기준값이다.
 VENT_A_SIGN = -1
 VENT_B_SIGN = 1
-VENT_ROTATION_DEG = 100
+VENT_ROTATION_DEG = 120
 
 
 # --------------------------------------------------------- 공통 인터페이스
