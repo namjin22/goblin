@@ -10,6 +10,7 @@
   GET  /api/history        지난 기록   (앱 [3] 지난 기록 화면)
   GET  /api/growth_photos  주간 성장 사진 목록
   GET  /api/health         서버 살아있는지 확인
+  GET  /camera/stream      실시간 웹캠 미리보기 (MJPEG, <img src="...">로 바로 씀)
 """
 
 import os
@@ -98,6 +99,25 @@ def create_app(store):
     @app.route("/api/health")
     def health():
         return jsonify({"ok": True})
+
+    @app.route("/camera/stream")
+    def camera_stream():
+        """실시간 웹캠 미리보기 (MJPEG). <img src="/camera/stream">로 그대로 쓸 수 있다.
+
+        controller.Controller.update_camera_frame()이 메인 루프에서 0.5초마다
+        갱신해둔 최신 프레임(store.get_camera_frame())을 읽기만 한다 - 이 함수는
+        Flask 스레드에서 돌아가므로 웹캠을 직접 만지지 않는다.
+        """
+        def generate():
+            while True:
+                frame = store.get_camera_frame()
+                if frame is not None:
+                    yield (b"--frame\r\n"
+                           b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+                time.sleep(0.3)
+
+        return Response(
+            generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
     @app.route("/api/state")
     def get_state():

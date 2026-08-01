@@ -36,6 +36,7 @@ class Store:
         self._log_path = log_path
         self._load_history_log()
         self._growth_photos = deque(maxlen=52)   # 1년치 주간 사진이면 충분
+        self._camera_frame = None   # 실시간 미리보기용 최신 JPEG 바이트
 
         self._state = {
             # 센서
@@ -105,6 +106,17 @@ class Store:
     def pending_count(self):
         with self._lock:
             return len(self._commands)
+
+    # ---------------------------------------------------------- 카메라 미리보기
+    def set_camera_frame(self, jpeg_bytes):
+        """메인 루프에서만 호출. 실시간 미리보기용 최신 프레임(JPEG 바이트)을 갱신한다."""
+        with self._lock:
+            self._camera_frame = jpeg_bytes
+
+    def get_camera_frame(self):
+        """Flask 스레드에서 호출. 최신 프레임이 없으면 None."""
+        with self._lock:
+            return self._camera_frame
 
     # ---------------------------------------------------------- 이력
     def _load_history_log(self):

@@ -38,7 +38,12 @@
     background: #1565c0; color: #fff; cursor: pointer;
   }
   .bigbtn.water { background: #0277bd; }
+  .bigbtn.light { background: #6a1b9a; }
   .bigbtn:disabled { background: #9e9e9e; }
+  .cam {
+    width: 100%; max-height: 240px; object-fit: cover;
+    border-radius: 20px; margin-bottom: 16px; background: #000;
+  }
   .toast {
     position: fixed; left: 16px; right: 16px; bottom: 100px;
     background: #111; color: #fff; padding: 20px; border-radius: 16px;
@@ -71,6 +76,8 @@
 
 <!-- [1] 지금 상태 -->
 <section class="screen on" id="s1">
+  <img class="cam" id="cam" src="/camera/stream" alt="웹캠 미리보기"
+       onerror="this.style.display='none'">
   <div class="card good" id="card">
     <div class="crop" id="crop">확인 중</div>
     <div class="msg" id="msg">불러오는 중…</div>
@@ -89,6 +96,7 @@
   <h2>직접 하기</h2>
   <button class="bigbtn" id="btnVent" onclick="send('vent_open')">창문 열기</button>
   <button class="bigbtn water" id="btnWater" onclick="send('water')">물 주기</button>
+  <button class="bigbtn light" id="btnLight" onclick="send('light_toggle')">생장등 켜기</button>
   <div class="pad"></div>
 </section>
 
@@ -153,6 +161,10 @@ async function poll() {
       d.vent_open ? '창문 닫기' : '창문 열기';
     document.getElementById('btnVent').setAttribute(
       'data-cmd', d.vent_open ? 'vent_close' : 'vent_open');
+
+    // 생장등 - busy와 무관하게 즉시 토글되는 명령이라 잠그지 않는다
+    document.getElementById('btnLight').textContent =
+      d.light_on ? '생장등 끄기' : '생장등 켜기';
   } catch (e) {
     document.getElementById('offline').style.display = 'block';
   }
@@ -171,7 +183,9 @@ async function send(cmd) {
     const d = await r.json();
     if (r.status === 409) toast(d.error);          // 동작 중 - 에러가 아니라 안내
     else if (!d.ok) toast('할 수 없습니다');
-    else toast(cmd === 'water' ? '물을 줍니다' : '창문을 움직입니다');
+    else if (cmd === 'water') toast('물을 줍니다');
+    else if (cmd === 'light_toggle') toast('생장등을 조작합니다');
+    else toast('창문을 움직입니다');
   } catch (e) {
     toast('서버에 연결할 수 없습니다');
   }

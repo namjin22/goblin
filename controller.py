@@ -33,7 +33,8 @@ SPRINKLER_SPEED = 60
 # 다시 열어버렸다. 생장등의 LIGHT_MIN_HOLD와 같은 원리로 유예시간을 둔다.
 VENT_MANUAL_HOLD = 8.0
 
-SCAN_INTERVAL = 6.0        # 몇 초마다 작물·흙을 촬영할지
+SCAN_INTERVAL = 6.0        # 몇 초마다 작물을 촬영해서 분류할지
+CAMERA_FRAME_INTERVAL = 0.5   # 실시간 미리보기 프레임 갱신 주기(초). 분류(SCAN_INTERVAL)와는 별개
 
 GROWTH_PHOTO_DIR = "growth_photos"
 GROWTH_PHOTO_INTERVAL = 7 * 24 * 3600.0   # 1주일마다 성장 사진 한 장
@@ -109,6 +110,7 @@ class Controller:
 
         self._last_scan = 0.0
         self._last_growth_week = {}   # crop_key -> 마지막으로 사진 남긴 주차
+        self._last_camera_frame = 0.0
 
         self._beep_until = 0.0
         self._last_level = None
@@ -240,6 +242,27 @@ class Controller:
         self.store.update(light_on=on)
         self.store.add_history(
             "light", "생장등을 켰습니다" if on else "생장등을 껐습니다")
+
+    # ------------------------------------------------------ 카메라 미리보기
+    def update_camera_frame(self):
+        """앱의 실시간 미리보기용 프레임을 갱신한다.
+
+        작물 분류(update_scan, 6초 주기)와는 별개로 더 자주(0.5초) 갱신해서
+        "라이브"처럼 보이게 한다. Mock 비전은 진짜 프레임이 없어서 건너뛴다.
+        """
+        if self.vision is None or not hasattr(self.vision, "cv2"):
+            return
+        now = time.time()
+        if now - self._last_camera_frame < CAMERA_FRAME_INTERVAL:
+            return
+        self._last_camera_frame = now
+
+        frame = self.vision.capture()
+        if frame is None:
+            return
+        ok, buf = self.vision.cv2.imencode(".jpg", frame)
+        if ok:
+            self.store.set_camera_frame(buf.tobytes())
 
     # ------------------------------------------------------ 비전 스캔
     def update_scan(self):
@@ -404,8 +427,9 @@ class Controller:
             dryness=humidity_to_dryness(env["humidity"]),
         )
 
-        # 2) 주기적 촬영
+        # 2) 주기적 촬영 (분류) + 실시간 미리보기 프레임
         self.update_scan()
+        self.update_camera_frame()
 
         # 3) 판단
         snap = self.store.snapshot()
