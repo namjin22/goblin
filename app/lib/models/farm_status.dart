@@ -17,6 +17,7 @@ class FarmState {
     required this.humidity,
     required this.dryness,
     required this.ventOpen,
+    required this.lightOn,
     required this.busy,
     required this.growthStage,
     required this.daysGrowing,
@@ -32,6 +33,7 @@ class FarmState {
   /// 0(젖음) ~ 100(마름).
   final double? dryness;
   final bool ventOpen;
+  final bool lightOn;
   final bool busy;
 
   /// 웹캠으로 실제 크기를 잰 값이 아니라, 처음 인식한 시각 + 프로파일의
@@ -48,6 +50,7 @@ class FarmState {
     humidity: null,
     dryness: null,
     ventOpen: false,
+    lightOn: false,
     busy: false,
     growthStage: null,
     daysGrowing: null,
@@ -63,6 +66,7 @@ class FarmState {
     humidity: 55,
     dryness: 35,
     ventOpen: false,
+    lightOn: false,
     busy: false,
     growthStage: '한창 자라는 중이에요',
     daysGrowing: 12,
@@ -77,6 +81,7 @@ class FarmState {
         humidity: (json['humidity'] as num?)?.toDouble(),
         dryness: (json['dryness'] as num?)?.toDouble(),
         ventOpen: json['vent_open'] as bool? ?? false,
+        lightOn: json['light_on'] as bool? ?? false,
         busy: json['busy'] as bool? ?? false,
         growthStage: json['growth_stage'] as String?,
         daysGrowing: json['days_growing'] as int?,

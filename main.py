@@ -20,6 +20,7 @@ import argparse
 import sys
 import time
 
+import hardware as hardware_module
 from controller import Controller
 from hardware import build_hardware
 from server import start_server
@@ -27,6 +28,41 @@ from state import Store
 from vision import build_vision
 
 LOOP_INTERVAL = 0.3      # 초. 너무 짧으면 모듈 통신이 밀린다.
+
+
+def _verify_vent_direction(hw):
+    """환기창이 실제로 열리고 닫히는지 확인하고, 틀렸으면 그 자리에서 고친다.
+
+    [배경] calibrate_vent_home()이 연결 시점 각도를 "닫힘"으로 저장하는데,
+    그 순간 문이 실제로 닫혀있지 않았거나, 모터 배선/조립이 바뀌면
+    VENT_A_SIGN/VENT_B_SIGN이 틀어질 수 있다. hwtest.py에서만 확인하고
+    hardware.py를 직접 고쳐야 했던 걸, 실행할 때마다 바로 확인·수정할 수
+    있게 만들었다 - 코드를 편집하러 갈 필요 없이 그 자리에서 끝낸다.
+    """
+    while True:
+        print("환기창 방향을 확인한다 (여는 중)...")
+        hw.open_vent()
+        time.sleep(2.5)
+        ans = input(
+            "환기창이 잘 열렸나? "
+            "(y=문제없음 / a=모터A만 반대 / b=모터B만 반대 / ab=둘다 반대 / s=건너뛰기) "
+        ).strip().lower()
+        print("닫는 중...")
+        hw.close_vent()
+        time.sleep(2.5)
+
+        if ans in ("y", "s", ""):
+            break
+        if ans in ("a", "ab"):
+            hardware_module.VENT_A_SIGN *= -1
+        if ans in ("b", "ab"):
+            hardware_module.VENT_B_SIGN *= -1
+        print("수정함: VENT_A_SIGN=%d VENT_B_SIGN=%d - 다시 확인한다"
+              % (hardware_module.VENT_A_SIGN, hardware_module.VENT_B_SIGN))
+
+    print("확정: VENT_A_SIGN=%d VENT_B_SIGN=%d"
+          % (hardware_module.VENT_A_SIGN, hardware_module.VENT_B_SIGN))
+    print("(다음 실행에도 계속 쓰려면 hardware.py 위쪽 상수를 이 값으로 맞출 것)")
 
 
 def parse_args():
@@ -49,8 +85,8 @@ def parse_args():
                         "0.5초마다 읽어서 메인 루프가 멈출 위험이 있다고 "
                         "의심됨. 기본은 꺼짐)")
     p.add_argument("--skip-vent-confirm", action="store_true",
-                   help="환기창 닫힘 확인 프롬프트 생략 (문이 항상 닫혀있는 "
-                        "게 확실할 때만. 데모 녹화 등)")
+                   help="환기창 닫힘 확인 + 열림/닫힘 방향 확인 프롬프트 둘 다 "
+                        "생략 (문이 항상 닫혀있고 방향도 확실할 때만. 데모 녹화 등)")
     return p.parse_args()
 
 
@@ -104,6 +140,9 @@ def main():
         print("[오류] 하드웨어 연결 실패:", e)
         print("       --mock 또는 --mock-hw 로 실행하면 MODI 없이 개발할 수 있다.")
         return 1
+
+    if not mock_hw and not args.skip_vent_confirm:
+        _verify_vent_direction(hw)
 
     # 2) 비전 준비 (--mock-hw만 줬으면 웹캠은 실물을 쓴다. 실패 시 자동으로 Mock)
     vision = build_vision(mock=args.mock, cam_index=args.cam)

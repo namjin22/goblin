@@ -174,13 +174,22 @@ class Vision:
 
         if self._model is not None:
             result = self._classify_crop_model(roi)
+            # [중요] "background"는 모델이 확신을 갖고 내린 "작물 없음"
+            # 판단이다 - None(확신 없음, HSV로 넘김)과 구분해서 그대로
+            # 돌려줘야, 호출한 쪽(controller.update_scan)이 인식 상태를
+            # 초기화할 수 있다. 여기서 걸러버리면 마지막으로 인식된 작물이
+            # 실제로는 치워졌는데도 화면에 계속 남는다.
             if result is not None:
                 return result
 
         return self._classify_crop_hsv(roi)
 
     def _classify_crop_model(self, roi):
-        """딥러닝 분류. 확신이 낮거나(background 포함) 실패하면 None을 반환해 HSV로 넘긴다."""
+        """딥러닝 분류. 확신이 낮으면 None을 반환해 HSV로 넘긴다.
+
+        "background"(작물 없음)로 확신 있게 판단되면 그 문자열 그대로
+        돌려준다 - None과는 다른 의미다.
+        """
         import torch
 
         try:
@@ -194,10 +203,9 @@ class Vision:
             print("[VISION] 모델 추론 실패, HSV로 넘긴다:", e)
             return None
 
-        name = self._class_map[idx]
-        if name == "background" or conf < MODEL_CONF_THRESHOLD:
+        if conf < MODEL_CONF_THRESHOLD:
             return None
-        return name
+        return self._class_map[idx]
 
     def _classify_crop_hsv(self, roi):
         """HSV 규칙 기반 작물 분류 (폴백용).

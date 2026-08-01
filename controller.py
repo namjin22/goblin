@@ -292,7 +292,17 @@ class Controller:
 
         updates = {}
         crop_started_at = self.store.get("crop_started_at")
-        if crop_key:
+        if crop_key == "background":
+            # 모델이 확신을 갖고 "작물 없음"이라고 판단했다. 마지막으로
+            # 인식했던 작물을 계속 붙들고 있으면 안 된다 - 실제로 치웠는데
+            # 화면엔 계속 "옥수수"라고 뜨는 문제가 이거였다.
+            if self.store.get("crop_key") is not None:
+                self.store.add_history("scan", "작물이 안 보여요")
+                updates["crop_key"] = None
+                updates["crop_name"] = "확인 중"
+                updates["profile_name"] = "확인 중"
+                updates["crop_started_at"] = None
+        elif crop_key:
             profile = get_profile(crop_key)
             # 작물이 바뀐 경우에만 기록을 남기고, 성장 일수 기준(첫 인식 시각)을 새로 잡는다.
             if crop_key != self.store.get("crop_key"):
@@ -307,7 +317,8 @@ class Controller:
         if updates:
             self.store.update(**updates)
 
-        if crop_key and crop_started_at:
+        if crop_key and crop_key != "background" and crop_started_at:
+            profile = get_profile(crop_key)
             self._maybe_save_growth_photo(crop_key, profile["name"], frame, crop_started_at)
 
     def _maybe_save_growth_photo(self, crop_key, crop_name, frame, crop_started_at):

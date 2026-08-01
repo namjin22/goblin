@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/farm_api.dart';
 import '../../theme/app_colors.dart';
@@ -5,7 +6,7 @@ import '../../widgets/scrollable_fill.dart';
 import '../../widgets/top_toast.dart';
 
 /// 화면[2] 직접 하기 - 조작(Operation)은 언제든 할 수 있다.
-/// server.py는 vent_open / vent_close / water 명령을 받는다.
+/// server.py는 vent_open / vent_close / water / light_toggle 명령을 받는다.
 class ManualScreen extends StatefulWidget {
   const ManualScreen({super.key});
 
@@ -15,6 +16,29 @@ class ManualScreen extends StatefulWidget {
 
 class _ManualScreenState extends State<ManualScreen> {
   String? _running;
+  bool _lightOn = false;
+  Timer? _poller;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshLight();
+    // 생장등은 자동 로직(밝기 기준)으로도 바뀌므로, 버튼 누른 직후 뿐
+    // 아니라 주기적으로도 실제 상태를 반영해야 한다.
+    _poller = Timer.periodic(const Duration(seconds: 2), (_) => _refreshLight());
+  }
+
+  @override
+  void dispose() {
+    _poller?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshLight() async {
+    final state = await FarmApi.fetchState();
+    if (!mounted || state == null) return;
+    setState(() => _lightOn = state.lightOn);
+  }
 
   Future<void> _run(String label, String command, String fallbackMessage) async {
     setState(() => _running = label);
@@ -27,6 +51,7 @@ class _ManualScreenState extends State<ManualScreen> {
       showTopToast(context, fallbackMessage);
     } else if (result.ok) {
       showTopToast(context, fallbackMessage);
+      if (command == 'light_toggle') _refreshLight();
     } else {
       showTopToast(context, result.error ?? '지금은 할 수 없어요');
     }
@@ -86,10 +111,14 @@ class _ManualScreenState extends State<ManualScreen> {
               const SizedBox(width: 16),
               Expanded(
                 child: _ActionButton(
-                  emoji: '💡',
-                  label: '불 켜기',
+                  emoji: _lightOn ? '🌙' : '💡',
+                  label: _lightOn ? '불 끄기' : '불 켜기',
                   enabled: !busy,
-                  onTap: () => _run('불을 켜는', 'light_toggle', '불을 켰어요'),
+                  onTap: () => _run(
+                    _lightOn ? '불을 끄는' : '불을 켜는',
+                    'light_toggle',
+                    _lightOn ? '불을 껐어요' : '불을 켰어요',
+                  ),
                 ),
               ),
             ],
