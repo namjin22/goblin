@@ -11,7 +11,7 @@ class HeroCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(28, 68, 28, 32),
+      padding: const EdgeInsets.fromLTRB(28, 52, 28, 32),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(32),
@@ -33,12 +33,12 @@ class CardTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minHeight: 70),
+      constraints: const BoxConstraints(minHeight: 56),
       alignment: Alignment.center,
       child: Text(
         text,
         textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 27, fontWeight: FontWeight.w700, color: AppColors.ink, height: 1.3),
+        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.ink, height: 1.3),
       ),
     );
   }
