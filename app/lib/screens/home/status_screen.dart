@@ -57,8 +57,8 @@ class _StatusScreenState extends State<StatusScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const SizedBox(height: 8),
           const _CameraPreview(),
           const SizedBox(height: 14),
           _StatusCard(state: _state),
@@ -78,12 +78,12 @@ class _CameraPreview extends StatelessWidget {
     // TODO: vision.py 웹캠 프레임을 MJPEG 등으로 받아 실제 영상으로 교체 — 현재 server.py엔 영상 스트리밍 엔드포인트가 없다.
     return Container(
       width: double.infinity,
-      height: 260,
+      height: 200,
       decoration: BoxDecoration(color: AppColors.camPreview, borderRadius: BorderRadius.circular(20)),
       child: Stack(
         children: [
           const Center(
-            child: Text('웹캠 미리보기', style: TextStyle(color: Colors.white54, fontSize: 15, fontWeight: FontWeight.w600)),
+            child: Text('웹캠 미리보기', style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w600)),
           ),
           Positioned(
             top: 10,
@@ -116,25 +116,25 @@ class _StatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
       decoration: BoxDecoration(color: state.level.background, borderRadius: BorderRadius.circular(24)),
       child: Column(
         children: [
-          Text(state.cropName, style: const TextStyle(color: AppColors.ink, fontSize: 16, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
+          Text(state.cropName, style: const TextStyle(color: AppColors.ink, fontSize: 14, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
           Text(
             state.message,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.ink, fontSize: 28, fontWeight: FontWeight.w800, height: 1.4),
+            style: const TextStyle(color: AppColors.ink, fontSize: 22, fontWeight: FontWeight.w800, height: 1.4),
           ),
           if (state.harvestDate != null) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             Container(height: 1, width: 48, color: AppColors.ink.withValues(alpha: 0.15)),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             Text(
               '수확 예정일 ${state.harvestDate}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.ink, fontSize: 22, fontWeight: FontWeight.w800),
+              style: const TextStyle(color: AppColors.ink, fontSize: 17, fontWeight: FontWeight.w800),
             ),
           ],
         ],
@@ -177,13 +177,13 @@ class _Fact extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
       child: Column(
         children: [
-          Text(label, style: const TextStyle(color: AppColors.sub, fontSize: 13, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          Text(value, style: const TextStyle(color: AppColors.ink, fontSize: 20, fontWeight: FontWeight.w800)),
+          Text(label, style: const TextStyle(color: AppColors.sub, fontSize: 12, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(color: AppColors.ink, fontSize: 16, fontWeight: FontWeight.w800)),
         ],
       ),
     );
