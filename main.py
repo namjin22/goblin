@@ -33,11 +33,10 @@ LOOP_INTERVAL = 0.3      # 초. 너무 짧으면 모듈 통신이 밀린다.
 def _verify_vent_direction(hw):
     """환기창이 실제로 열리고 닫히는지 확인하고, 틀렸으면 그 자리에서 고친다.
 
-    [배경] calibrate_vent_home()이 연결 시점 각도를 "닫힘"으로 저장하는데,
-    그 순간 문이 실제로 닫혀있지 않았거나, 모터 배선/조립이 바뀌면
-    VENT_A_SIGN/VENT_B_SIGN이 틀어질 수 있다. hwtest.py에서만 확인하고
-    hardware.py를 직접 고쳐야 했던 걸, 실행할 때마다 바로 확인·수정할 수
-    있게 만들었다 - 코드를 편집하러 갈 필요 없이 그 자리에서 끝낸다.
+    hardware.open_vent()/close_vent()는 상대회전이라 여기서 열고 닫는
+    것만으로 항상 원래 위치로 돌아온다(절대각 계산이 없어서 안전하다).
+    VENT_A_SIGN/VENT_B_SIGN 부호가 실제 배선과 안 맞으면 여기서 그 자리에서
+    바로 고칠 수 있다 - hwtest.py나 코드 편집까지 갈 필요 없다.
     """
     while True:
         print("환기창 방향을 확인한다 (여는 중)...")
@@ -121,10 +120,10 @@ def main():
     store = Store()
     store.update(mock=mock_hw)
 
-    # [중요] 환기창은 "절대각 0 = 닫힘"이 아니라, 연결하는 바로 이 순간의
-    # 각도를 닫힘 기준으로 저장한다(hardware.calibrate_vent_home). 그래서
-    # 이 시점에 문이 실제로 닫혀 있지 않으면 그 뒤로 계속 엉뚱한 위치로
-    # 움직인다 - "모터가 이상하게 움직인다"는 문제가 대부분 이거다.
+    # [중요] state.py는 시작할 때 vent_open=False(닫힘)로 가정한다.
+    # 환기창은 이제 상대회전으로 움직이므로(hardware.py 참고), 이 가정이
+    # 실제 상태와 다르면 열기/닫기가 상태 가드에 막히거나 겹쳐 돌아서
+    # 위치가 어긋난다. 그래서 시작할 때 실제로 닫혀 있는지 확인한다.
     if not mock_hw and not args.skip_vent_confirm:
         input("환기창을 완전히 닫아둔 상태인지 확인하고 Enter를 누르세요"
               " (매번 확인 귀찮으면 --skip-vent-confirm) ")

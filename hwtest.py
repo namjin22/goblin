@@ -183,20 +183,20 @@ def test_motors(bundle, results):
     #
     # [중요] pymodi_plus 소스(motor.py)를 직접 확인해보니 motor.angle은
     # 진짜 절대각(엔코더 현재값)이고, "절대각 0 = 닫힘"이라는 보장이 전혀
-    # 없다 - 모터마다 조립 기준이 다르면 0의 의미도 다르다. 그래서 "지금
-    # 실제로 닫혀 있는 위치"를 읽어서 그걸 닫힘 기준으로 삼는 방식으로
-    # 바꿨다. 부호(방향)와 각도는 실물에서만 확정할 수 있어서, 여기서
-    # 바로 열어보고 결과를 물어 맞을 때까지 값을 조정한다.
+    # 없다 - 모터마다 조립 기준이 다르면 0의 의미도 다르다. 절대각+계산
+    # 방식은 wraparound(0/360 경계) 때문에 방향이 가끔 반대로 보이는
+    # 문제가 있어서, 지금은 append_angle(상대회전)로 바꿨다 - 열기/닫기가
+    # 항상 쌍으로 맞으면 시작 위치와 무관하게 원래 자리로 돌아온다.
+    # 부호(방향)와 각도는 실물에서만 확정할 수 있어서, 여기서 바로 열어보고
+    # 결과를 물어 맞을 때까지 값을 조정한다.
     if "vent_a" in roles and "vent_b" in roles:
         vent_a = motors[roles["vent_a"]]
         vent_b = motors[roles["vent_b"]]
 
         line("5. 환기창 열림/닫힘 보정")
-        input("  >> 환기창을 완전히 닫힌 상태로 손으로 맞춰두고 Enter ")
         hw = ModiHardware()
         hw.vent_motor_a = vent_a
         hw.vent_motor_b = vent_b
-        hw.calibrate_vent_home()
 
         confirmed = False
         while True:

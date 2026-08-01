@@ -152,7 +152,10 @@ class Controller:
 
     # ------------------------------------------------------ 액추에이터
     def open_vent(self):
-        if self.busy:
+        # [중요] hardware.open_vent()는 이제 절대각이 아니라 상대회전이다.
+        # 이미 열려 있는데 또 열면 그만큼 더 돌아가버린다(원래 자리로
+        # 돌아올 수 없게 됨) - 그래서 "닫혀 있을 때만" 열도록 막는다.
+        if self.busy or self.store.get("vent_open"):
             return False
         self.hw.open_vent()
         self.store.update(vent_open=True)
@@ -161,7 +164,8 @@ class Controller:
         return True
 
     def close_vent(self):
-        if self.busy:
+        # 같은 이유로 "열려 있을 때만" 닫는다.
+        if self.busy or not self.store.get("vent_open"):
             return False
         self.hw.close_vent()
         self.store.update(vent_open=False)

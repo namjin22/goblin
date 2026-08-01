@@ -30,21 +30,26 @@ VENT_MOTOR_A_INDEX = 2
 VENT_MOTOR_B_INDEX = 0
 SPRINKLER_MOTOR_INDEX = 1
 
-# [핵심] pymodi_plus 소스(motor.py)를 직접 확인한 결과:
-#   - motor.angle 은 진짜 절대각(엔코더가 읽는 현재값, 0~360)이다.
-#   - set_angle()은 목표각이 0~360 범위를 벗어나면 "조용히 아무 일도
-#     안 한다" (음수를 주면 무시됨 - 첫 시도(-250)가 안 먹힌 이유).
-#   - "절대각 0"이 물리적으로 닫힌 위치라는 보장은 전혀 없다. 모터A는
-#     실측 결과 0이 이미 닫힌 위치를 지나친 지점이었다(0으로 보내면
-#     더 닫히는 방향으로 움직임) - 두 모터의 조립 기준이 다르다.
+# [핵심 - 두 번째 설계 변경] 절대각(set_angle) 방식을 버리고 상대회전
+# (append_angle)으로 바꿨다. pymodi_plus 소스(motor.py)에 두 방식이 있다:
+#   - angle 프로퍼티(set_angle) - 절대각(0~360)으로 이동. 0~360을 벗어나면
+#     조용히 무시됨. "닫힘 각도를 calibrate로 기억해뒀다가 그 각도로
+#     되돌아간다"는 방식을 썼었는데, home 각도가 0/360 경계 근처일 때
+#     (예: home=350에서 -120 이동 → (350-120)%360=230) 모터가 최단 경로가
+#     아니라 반대 방향으로 훨씬 많이 도는 경우가 있었다 - "모터A가 자꾸
+#     반대로 돈다"는 문제가 재발했던 진짜 원인이 이거였다(calibrate 타이밍
+#     문제가 아니라 절대각 wraparound 자체가 근본 문제).
+#   - append_angle(delta, speed) - "지금 위치에서 delta만큼 상대 회전".
+#     delta는 음수도 그대로 먹힌다(s16). wraparound 문제 자체가 없다.
 #
-# 그래서 "0=닫힘"을 가정하지 않고, 프로그램이 시작할 때(문이 실제로
-# 닫혀 있는 상태에서) 각 모터의 "현재" 각도를 읽어 그걸 닫힘 기준으로
-# 삼는다 (ModiHardware.connect() -> calibrate_vent_home()).
-# 여는 건 그 기준에서 VENT_A_SIGN/VENT_B_SIGN 방향으로 VENT_ROTATION_DEG만큼.
+# 그래서 열기=+delta 회전, 닫기=-delta 회전(정확히 되돌아옴)으로 완전히
+# 바꿨다. 이러면 "닫힘 기준 각도"를 기억할 필요도 없어진다 - 항상 열고
+# 닫는 게 쌍으로 맞으면 원래 위치로 돌아온다. 대신 controller.py에서
+# "이미 열려있는데 또 열기"를 못 하게 막아야 한다(안 그러면 계속
+# 밀려나감) - Controller.open_vent()/close_vent()의 상태 가드 참고.
 #
-# [미확정] 아래 부호는 hwtest.py의 대화형 보정(calibrate)으로 실측 후
-# 확정할 것 - 지금 값은 첫 시도 기준값이다.
+# [미확정] 아래 부호는 hwtest.py의 대화형 보정 또는 main.py 시작 시
+# 자동으로 물어보는 확인 절차로 실측 후 필요하면 뒤집을 것.
 VENT_A_SIGN = -1
 VENT_B_SIGN = 1
 VENT_ROTATION_DEG = 120
@@ -108,8 +113,8 @@ class ModiHardware(BaseHardware):
       motors[VENT_MOTOR_B_INDEX] = 환기창 모터B
       motors[SPRINKLER_MOTOR_INDEX] = 스프링클러 (급수 표현용, 실제로 물은 나오지 않음)
 
-    [중요] 환기창은 "절대각 0 = 닫힘"이 아니다. connect() 시점에 실제
-    닫혀 있는 위치를 기준으로 삼는다 (calibrate_vent_home 참고).
+    [중요] 환기창은 절대각이 아니라 상대회전(append_angle)으로 움직인다.
+    열기(+delta)/닫기(-delta)가 항상 쌍으로 맞으면 원래 위치로 돌아온다.
     """
 
     def __init__(self, conn_type=None, network_uuid=None):
@@ -121,8 +126,6 @@ class ModiHardware(BaseHardware):
         self.vent_motor_a = None
         self.vent_motor_b = None
         self.sprinkler_motor = None
-        self._vent_a_home = None
-        self._vent_b_home = None
 
     def connect(self):
         import modi_plus  # 이 파일 안에서만 import
@@ -184,21 +187,7 @@ class ModiHardware(BaseHardware):
 
         # 센서 첫 값은 0으로 나온다. 반드시 대기.
         time.sleep(1)
-        self.calibrate_vent_home()
         print("[HW] 초기화 완료")
-
-    def calibrate_vent_home(self):
-        """지금 위치를 환기창 '닫힘' 기준으로 저장한다.
-
-        [반드시] 이 시점에 환기창이 실제로 닫혀 있어야 한다. 프로그램을
-        시작할 때(또는 hwtest.py에서) 문을 손으로 닫아둔 상태에서 호출할 것.
-        절대각 0이 닫힘이라는 보장이 없어서(모터마다 조립 기준이 다름)
-        "지금 각도"를 기준점으로 삼는 방식으로 바꿨다.
-        """
-        self._vent_a_home = self.vent_motor_a.angle
-        self._vent_b_home = self.vent_motor_b.angle
-        print("[HW] 환기창 닫힘 기준 각도 저장: A=%d도 B=%d도 (지금 상태 = 닫힘)"
-              % (self._vent_a_home, self._vent_b_home))
 
     def close(self):
         """종료 시 하드웨어를 안전한 상태로 되돌린다."""
@@ -247,19 +236,16 @@ class ModiHardware(BaseHardware):
         self.speaker.reset()
 
     def open_vent(self, speed=50):
-        # 닫힘 기준(calibrate_vent_home)에서 부호 방향으로 회전한다.
-        # set_angle()이 0~360 범위를 벗어나면 조용히 무시하므로 % 360으로
-        # 항상 유효 범위 안에 들어오게 한다.
-        target_a = (self._vent_a_home + VENT_A_SIGN * VENT_ROTATION_DEG) % 360
-        target_b = (self._vent_b_home + VENT_B_SIGN * VENT_ROTATION_DEG) % 360
-        self.vent_motor_a.angle = target_a, speed
-        self.vent_motor_b.angle = target_b, speed
+        # 상대회전: 지금 위치에서 정해진 방향으로 VENT_ROTATION_DEG만큼 돈다.
+        # 절대각 방식의 wraparound 문제가 없다 - 항상 close_vent()와 쌍으로
+        # 맞춰 호출된다는 전제 하에 안전하다(controller.py의 상태 가드 참고).
+        self.vent_motor_a.append_angle(VENT_A_SIGN * VENT_ROTATION_DEG, speed)
+        self.vent_motor_b.append_angle(VENT_B_SIGN * VENT_ROTATION_DEG, speed)
 
     def close_vent(self, speed=50):
-        # 닫힘 기준으로 되돌아간다 (절대각 0이 아니라 calibrate_vent_home으로
-        # 저장해둔 실제 닫힘 각도).
-        self.vent_motor_a.angle = self._vent_a_home, speed
-        self.vent_motor_b.angle = self._vent_b_home, speed
+        # 열 때와 정확히 반대로 회전해 원래 위치로 되돌아간다.
+        self.vent_motor_a.append_angle(-VENT_A_SIGN * VENT_ROTATION_DEG, speed)
+        self.vent_motor_b.append_angle(-VENT_B_SIGN * VENT_ROTATION_DEG, speed)
 
     def set_sprinkler(self, speed):
         if self.sprinkler_motor:
