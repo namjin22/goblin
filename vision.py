@@ -12,6 +12,7 @@ MockVision 덕분에 웹캠 없이도 전체 시스템이 돌아간다.
 import json
 import os
 import random
+import sys
 import time
 
 CALIB_PATH = "calib.json"
@@ -35,7 +36,12 @@ class Vision:
     def __init__(self, cam_index=0):
         import cv2  # 이 파일 안에서만 import
         self.cv2 = cv2
-        self.cap = cv2.VideoCapture(cam_index)
+
+        # [중요] Windows 기본 백엔드(MSMF)는 여는 데 20초 가까이 걸리고,
+        # 촬영 중간에 "can't grab frame" 에러로 프레임을 계속 못 읽는 경우가
+        # 실측됐다. DirectShow(CAP_DSHOW)가 훨씬 빠르고(7초대) 안정적이었다.
+        backend = cv2.CAP_DSHOW if sys.platform.startswith("win") else 0
+        self.cap = cv2.VideoCapture(cam_index, backend)
         if not self.cap.isOpened():
             raise RuntimeError("웹캠을 열 수 없다. cam_index를 확인할 것.")
         self.calib = self.load_calib()
@@ -109,53 +115,33 @@ class Vision:
 
     # ------------------------------------------------------ 작물 분류
     def classify_crop(self, frame):
-        """HSV 규칙 기반 작물 분류 (1차안).
+        """HSV 규칙 기반 작물 분류 (폴백용).
 
-        딥러닝은 시간이 남을 때만. 이 규칙만으로 완주 가능해야 한다.
-        아래 임계값은 반드시 현장 조명에서 다시 잡을 것.
+        [중요] 대회 규정상 실제 작물을 반입할 수 없어 레고 브릭으로 대신한다.
+        시연 작물은 상추/옥수수/당근 3종으로 확정됐다 (profiles.py 참고).
+        옥수수·당근은 브릭 배색이 아직 정해지지 않아 규칙을 만들 수 없다.
+        브릭 색이 정해지면 여기에 판단을 추가할 것.
 
-        구분 기준
-          - 붉은 기가 강하면        -> 토마토 또는 고추
-          - 초록이 밝고 연하면      -> 상추
-          - 초록이 진하고 채도 높으면 -> 배추
+        지금은 상추(초록)만 규칙으로 인식하고, 나머지는 판단 보류(None)
+        -> 딥러닝 모델(있으면)이 사실상 주 분류 수단이 된다.
         """
         cv2 = self.cv2
         roi = _crop(frame, CROP_ROI)
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
         h = hsv[:, :, 0].astype("float")
         s = hsv[:, :, 1].astype("float")
-        v = hsv[:, :, 2].astype("float")
 
         total = h.size
         if total == 0:
             return None
 
-        # OpenCV의 Hue 범위는 0~179
-        red_mask = ((h < 10) | (h > 170)) & (s > 90)
         green_mask = (h > 35) & (h < 85) & (s > 50)
-
-        red_ratio = red_mask.sum() / total
         green_ratio = green_mask.sum() / total
 
-        if red_ratio > 0.15:
-            # 붉은 물체의 형태로 토마토/고추를 가른다.
-            # 세로로 긴 형태면 고추, 둥글면 토마토.
-            ys, xs = red_mask.nonzero()
-            if len(xs) > 50:
-                width = xs.max() - xs.min() + 1
-                height = ys.max() - ys.min() + 1
-                if height > width * 1.6:
-                    return "pepper"
-            return "tomato"
-
         if green_ratio > 0.20:
-            mean_s = float(s[green_mask].mean()) if green_mask.any() else 0
-            mean_v = float(v[green_mask].mean()) if green_mask.any() else 0
-            if mean_v > 130 and mean_s < 140:
-                return "lettuce"
-            return "cabbage"
+            return "lettuce"
 
-        return None   # 판단 보류. 기존 작물을 유지한다.
+        return None   # 옥수수/당근/판단 보류. 기존 작물을 유지한다.
 
 
 class MockVision:

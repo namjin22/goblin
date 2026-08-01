@@ -11,7 +11,8 @@ pip install pymodi-plus flask opencv-python
 ## 실행
 
 ```bash
-python main.py --mock          # 하드웨어·웹캠 없이 (개발용)
+python main.py --mock          # 하드웨어·웹캠 둘 다 없이 (개발용)
+python main.py --mock-hw       # MODI만 없이, 웹캠은 실물 (비전 기능 개발용)
 python main.py                 # 실물 MODI + 웹캠
 python main.py --no-auto       # 자동 조치 끄고 수동 조작만
 python main.py --ble UUID      # BLE 무선 (마지막 리허설에서만)
@@ -23,6 +24,18 @@ python main.py --ble UUID      # BLE 무선 (마지막 리허설에서만)
 python main.py --calib wet     # 젖은 흙 기준
 python main.py --calib dry     # 마른 흙 기준
 ```
+
+### 카메라가 여러 대일 때 (`--cam`)
+
+노트북 내장캠과 별도 USB 웹캠이 같이 꽂혀 있으면 `--cam 0`이 어느 쪽인지 장비마다 다르다.
+아래로 이름과 인덱스를 먼저 확인할 것 (대회장에서도 한 번 더 확인).
+
+```bash
+pip install pygrabber
+python -c "from pygrabber.dshow_graph import FilterGraph; [print(i, n) for i, n in enumerate(FilterGraph().get_input_devices())]"
+```
+
+확인한 인덱스를 `--cam`에 넘긴다. 예: `python main.py --mock-hw --cam 1`
 
 ---
 
