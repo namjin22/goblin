@@ -1,0 +1,135 @@
+# -*- coding: utf-8 -*-
+"""앱과 통신하는 Flask HTTP 서버.
+
+[규칙] 이 파일에서는 하드웨어를 절대 만지지 않는다.
+       상태를 읽고, 명령을 큐에 넣을 뿐이다.
+
+앱 담당 팀원에게 알려줄 API
+  GET  /api/state    현재 상태 (앱 [1] 지금 상태 화면)
+  POST /api/command  수동 조작   (앱 [2] 직접 하기 화면)
+  GET  /api/history  지난 기록   (앱 [3] 지난 기록 화면)
+  GET  /api/health   서버 살아있는지 확인
+"""
+
+import os
+import threading
+
+from flask import Flask, Response, jsonify, request
+
+from state import VALID_COMMANDS
+
+
+def create_app(store):
+    app = Flask(__name__)
+
+    # 한글을 \uXXXX 로 escape 하지 않고 그대로 내보낸다.
+    # (escape 되어도 앱의 JSON.parse 는 정상 처리하지만, 브라우저로
+    #  직접 확인할 때 읽을 수 없어서 디버깅이 불편하다)
+    try:
+        app.json.ensure_ascii = False          # Flask 2.3 이상
+    except AttributeError:
+        app.config["JSON_AS_ASCII"] = False    # 구버전 Flask
+
+    # 앱이 다른 기기에서 접속할 수 있도록 CORS 허용
+    @app.after_request
+    def add_cors(resp):
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        return resp
+
+    @app.route("/")
+    def index():
+        """테스트용 화면. 휴대폰 브라우저로 바로 열어볼 수 있다.
+
+        앱이 완성되기 전까지 이걸로 전체 흐름을 확인한다.
+        앱 담당자에게는 참고 구현으로 넘기면 된다.
+        """
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "testapp.html")
+        if not os.path.exists(path):
+            return "testapp.html 이 없습니다", 404
+        with open(path, "r", encoding="utf-8") as f:
+            return Response(f.read(), mimetype="text/html")
+
+    @app.route("/api/health")
+    def health():
+        return jsonify({"ok": True})
+
+    @app.route("/api/state")
+    def get_state():
+        """앱 [1] 지금 상태 화면용.
+
+        어르신용 화면이므로 앱은 message 와 level 만 크게 보여주면 된다.
+        나머지 수치는 필요할 때만 쓴다.
+        """
+        snap = store.snapshot()
+        return jsonify({
+            "message": snap["message"],          # 큰 글씨 한 줄
+            "short": snap.get("short"),          # Display에 나가는 짧은 단어
+            "level": snap["level"],              # good / warn / alert -> 배경색
+            "crop_name": snap["crop_name"],
+            "temperature": snap["temperature"],
+            "humidity": snap["humidity"],
+            "illuminance": snap["illuminance"],
+            "dryness": snap["dryness"],
+            "vent_open": snap["vent_open"],
+            "sprinkler_on": snap["sprinkler_on"],
+            "light_on": snap["light_on"],        # 생장등
+            "busy": snap["busy"],
+            "busy_action": snap["busy_action"],
+            "mock": snap["mock"],
+            "updated_at": snap["updated_at"],
+        })
+
+    @app.route("/api/command", methods=["POST", "OPTIONS"])
+    def post_command():
+        """앱 [2] 직접 하기 화면용.
+
+        요청 예: {"command": "water"}
+        가능한 값: vent_open, vent_close, water, scan
+        """
+        if request.method == "OPTIONS":
+            return ("", 204)
+
+        data = request.get_json(silent=True) or {}
+        cmd = data.get("command")
+
+        if cmd not in VALID_COMMANDS:
+            return jsonify({
+                "ok": False,
+                "error": "알 수 없는 명령입니다",
+                "valid": sorted(VALID_COMMANDS),
+            }), 400
+
+        if store.get("busy"):
+            return jsonify({
+                "ok": False,
+                "error": "지금 다른 동작을 하고 있어요. 잠시 뒤에 눌러주세요",
+            }), 409
+
+        store.push_command(cmd, source="app")
+        return jsonify({"ok": True, "queued": cmd})
+
+    @app.route("/api/history")
+    def get_history():
+        """앱 [3] 지난 기록 화면용."""
+        limit = request.args.get("limit", default=50, type=int)
+        return jsonify({"items": store.history(limit=limit)})
+
+    return app
+
+
+def start_server(store, host="0.0.0.0", port=5000):
+    """Flask를 별도 스레드에서 띄운다. 메인 루프를 막지 않는다."""
+    app = create_app(store)
+
+    def run():
+        # reloader를 끄지 않으면 스레드에서 문제가 생긴다.
+        app.run(host=host, port=port, debug=False,
+                use_reloader=False, threaded=True)
+
+    t = threading.Thread(target=run, daemon=True, name="flask")
+    t.start()
+    print("[API] http://%s:%d 에서 대기 중" % (host, port))
+    return t

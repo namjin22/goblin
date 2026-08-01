@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>농깨비</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; font-family: system-ui, "Malgun Gothic", sans-serif;
+    background: #f2f2f2; color: #111;
+  }
+  .screen { display: none; padding: 20px; min-height: 100vh; }
+  .screen.on { display: block; }
+
+  /* --- [1] 지금 상태 --- */
+  .card {
+    border-radius: 24px; padding: 40px 24px; text-align: center;
+    transition: background .4s; margin-bottom: 20px;
+  }
+  .good  { background: #2e7d32; color: #fff; }
+  .warn  { background: #f9a825; color: #111; }
+  .alert { background: #c62828; color: #fff; }
+  .msg { font-size: 40px; font-weight: 800; line-height: 1.35; }
+  .crop { font-size: 22px; opacity: .9; margin-bottom: 14px; }
+
+  .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .fact {
+    background: #fff; border-radius: 16px; padding: 18px; text-align: center;
+  }
+  .fact b { display: block; font-size: 30px; margin-top: 6px; }
+  .fact span { font-size: 17px; color: #666; }
+
+  /* --- [2] 직접 하기 --- */
+  .bigbtn {
+    width: 100%; padding: 40px; font-size: 36px; font-weight: 800;
+    border: none; border-radius: 24px; margin-bottom: 18px;
+    background: #1565c0; color: #fff; cursor: pointer;
+  }
+  .bigbtn.water { background: #0277bd; }
+  .bigbtn:disabled { background: #9e9e9e; }
+  .toast {
+    position: fixed; left: 16px; right: 16px; bottom: 100px;
+    background: #111; color: #fff; padding: 20px; border-radius: 16px;
+    font-size: 22px; text-align: center; display: none;
+  }
+
+  /* --- [3] 지난 기록 --- */
+  .log { background: #fff; border-radius: 16px; padding: 18px; margin-bottom: 10px; }
+  .log b { font-size: 21px; } .log span { color: #777; font-size: 16px; }
+
+  /* --- 하단 탭 --- */
+  nav {
+    position: fixed; left: 0; right: 0; bottom: 0; display: flex;
+    background: #fff; border-top: 2px solid #ddd;
+  }
+  nav button {
+    flex: 1; padding: 18px 4px; font-size: 19px; font-weight: 700;
+    border: none; background: none; color: #888; cursor: pointer;
+  }
+  nav button.on { color: #1565c0; }
+  .pad { height: 90px; }
+  h2 { font-size: 26px; margin: 4px 0 18px; }
+  .offline { background: #b71c1c; color: #fff; padding: 14px;
+             text-align: center; font-size: 19px; display: none; }
+</style>
+</head>
+<body>
+
+<div class="offline" id="offline">서버에 연결할 수 없습니다</div>
+
+<!-- [1] 지금 상태 -->
+<section class="screen on" id="s1">
+  <div class="card good" id="card">
+    <div class="crop" id="crop">확인 중</div>
+    <div class="msg" id="msg">불러오는 중…</div>
+  </div>
+  <div class="facts">
+    <div class="fact"><span>온도</span><b id="temp">-</b></div>
+    <div class="fact"><span>습도</span><b id="humi">-</b></div>
+    <div class="fact"><span>흙 상태</span><b id="dry">-</b></div>
+    <div class="fact"><span>창문</span><b id="vent">-</b></div>
+  </div>
+  <div class="pad"></div>
+</section>
+
+<!-- [2] 직접 하기 -->
+<section class="screen" id="s2">
+  <h2>직접 하기</h2>
+  <button class="bigbtn" id="btnVent" onclick="send('vent_open')">창문 열기</button>
+  <button class="bigbtn water" id="btnWater" onclick="send('water')">물 주기</button>
+  <div class="pad"></div>
+</section>
+
+<!-- [3] 지난 기록 -->
+<section class="screen" id="s3">
+  <h2>지난 기록</h2>
+  <div id="logs"></div>
+  <div class="pad"></div>
+</section>
+
+<nav>
+  <button class="on" onclick="tab(1,this)">지금 상태</button>
+  <button onclick="tab(2,this)">직접 하기</button>
+  <button onclick="tab(3,this)">지난 기록</button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// 같은 서버에서 열면 주소를 비워두면 된다.
+// 파일로 직접 열 때만 노트북 IP를 적는다. 예: "http://192.168.0.15:5000"
+const API = "";
+
+function tab(n, el) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
+  document.getElementById('s' + n).classList.add('on');
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+  if (n === 3) loadLogs();
+}
+
+function toast(text) {
+  const t = document.getElementById('toast');
+  t.textContent = text;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 2500);
+}
+
+// --- [1] 상태 폴링 ---
+async function poll() {
+  try {
+    const r = await fetch(API + '/api/state');
+    const d = await r.json();
+    document.getElementById('offline').style.display = 'none';
+
+    document.getElementById('msg').textContent = d.message;
+    document.getElementById('crop').textContent = d.crop_name;
+    document.getElementById('card').className = 'card ' + d.level;
+
+    document.getElementById('temp').textContent =
+      d.temperature === null ? '-' : d.temperature.toFixed(1) + '°';
+    document.getElementById('humi').textContent =
+      d.humidity === null ? '-' : Math.round(d.humidity) + '%';
+    document.getElementById('dry').textContent =
+      d.dryness === null ? '-' : (d.dryness > 60 ? '마름' : '촉촉');
+    document.getElementById('vent').textContent = d.vent_open ? '열림' : '닫힘';
+
+    // 동작 중이면 버튼을 잠근다 (어르신이 여러 번 누르는 것 방지)
+    document.getElementById('btnVent').disabled = d.busy;
+    document.getElementById('btnWater').disabled = d.busy;
+    document.getElementById('btnVent').textContent =
+      d.vent_open ? '창문 닫기' : '창문 열기';
+    document.getElementById('btnVent').setAttribute(
+      'data-cmd', d.vent_open ? 'vent_close' : 'vent_open');
+  } catch (e) {
+    document.getElementById('offline').style.display = 'block';
+  }
+}
+
+// --- [2] 명령 전송 ---
+async function send(cmd) {
+  const btn = document.getElementById('btnVent');
+  if (cmd.startsWith('vent')) cmd = btn.getAttribute('data-cmd') || cmd;
+  try {
+    const r = await fetch(API + '/api/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: cmd })
+    });
+    const d = await r.json();
+    if (r.status === 409) toast(d.error);          // 동작 중 - 에러가 아니라 안내
+    else if (!d.ok) toast('할 수 없습니다');
+    else toast(cmd === 'water' ? '물을 줍니다' : '창문을 움직입니다');
+  } catch (e) {
+    toast('서버에 연결할 수 없습니다');
+  }
+}
+
+// --- [3] 기록 ---
+async function loadLogs() {
+  try {
+    const r = await fetch(API + '/api/history?limit=20');
+    const d = await r.json();
+    document.getElementById('logs').innerHTML = d.items.map(i => {
+      const t = new Date(i.at * 1000);
+      const hh = String(t.getHours()).padStart(2, '0');
+      const mm = String(t.getMinutes()).padStart(2, '0');
+      return `<div class="log"><b>${i.detail || i.event}</b><br>
+              <span>${hh}:${mm}</span></div>`;
+    }).join('') || '<div class="log">아직 기록이 없습니다</div>';
+  } catch (e) {}
+}
+
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>

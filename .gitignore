@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# 현장에서 각자 잡는 값이라 공유하면 안 된다
+# (팀원마다 카메라·조명이 달라서 덮어쓰면 서로 깨진다)
+calib.json
+
+# 실행 중 생기는 것들
+*.log
+log.csv
+run.log
+
+# 에디터 / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
