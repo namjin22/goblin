@@ -23,6 +23,7 @@ import time
 import hardware as hardware_module
 from controller import Controller
 from hardware import build_hardware
+from profiles import CROP_PROFILES
 from server import start_server
 from state import Store
 from vision import build_vision
@@ -80,9 +81,12 @@ def parse_args():
     p.add_argument("--calib", choices=["wet", "dry"], default=None,
                    help="흙 캘리브레이션만 수행하고 종료")
     p.add_argument("--camera-preview", action="store_true",
-                   help="앱에 실시간 웹캠 미리보기 제공 (실험적 - 웹캠을 "
-                        "0.5초마다 읽어서 메인 루프가 멈출 위험이 있다고 "
-                        "의심됨. 기본은 꺼짐)")
+                   help="앱에 웹캠 미리보기 제공 (5초마다 그 순간의 스냅샷으로 "
+                        "갱신. 기본은 꺼짐)")
+    p.add_argument("--force-crop", choices=list(CROP_PROFILES.keys()), default=None,
+                   help="[시연 촬영용, 임시] 카메라 인식을 무시하고 항상 이 작물로 "
+                        "취급한다. 브릭 인식이 안 맞아 촬영이 힘들 때만 쓰고, "
+                        "끝나면 빼고 다시 실행할 것 (묻지 않는다는 핵심과 어긋나는 우회)")
     p.add_argument("--verify-vent", action="store_true",
                    help="시작할 때 환기창 닫힘 확인 + 열림/닫힘 방향 확인 프롬프트를 "
                         "띄운다 (기본은 꺼짐 - 방향/각도가 이미 확정됐으면 "
@@ -152,7 +156,10 @@ def main():
     start_server(store, port=args.port)
 
     # 4) 제어기
-    ctrl = Controller(hw, store, vision=vision, camera_preview=args.camera_preview)
+    ctrl = Controller(hw, store, vision=vision, camera_preview=args.camera_preview,
+                      force_crop=args.force_crop)
+    if args.force_crop:
+        print("[주의] --force-crop %s : 카메라 인식 무시하고 항상 이 작물로 표시함 (촬영용)" % args.force_crop)
 
     # Mock 환경에서는 급수 시 건조도가 실제로 회복되도록 연결해둔다.
     if hasattr(vision, "on_water"):

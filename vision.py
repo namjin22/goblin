@@ -24,6 +24,12 @@ MODEL_DIR = "models"
 MODEL_PATH = os.path.join(MODEL_DIR, "crop_classifier.pt")
 CLASS_MAP_PATH = os.path.join(MODEL_DIR, "class_map.json")
 MODEL_CONF_THRESHOLD = 0.6   # 이보다 확신이 낮으면 HSV 폴백으로 넘긴다
+# [중요] "작물 없음(background)"은 기준을 따로 낮춘다. 실물 조명이 학습 때와
+# 달라 모델이 background에 0.6 이상 확신을 못 갖는 경우가 있었는데, 그러면
+# HSV 폴백(옥수수/당근 규칙 없음, None만 반환)으로 넘어가 버려서 이미 치운
+# 작물이 화면에 계속 남는 문제로 이어졌다. 작물이 있는데 잘못 지우는 것보다
+# 치웠는데 안 지워지는 게 데모에서 훨씬 치명적이라 background는 관대하게 인정한다.
+BACKGROUND_CONF_THRESHOLD = 0.35
 
 # [확장용, 현재 미사용] 화면에서 흙이 차지하는 영역.
 # 탑다운 배치에는 흙이 아예 안 보여서 지금은 의미가 없다.
@@ -208,10 +214,12 @@ class Vision:
         pairs = sorted(zip(self._class_map, probs.tolist()), key=lambda p: -p[1])
         print("[VISION] 분류 확률:", ", ".join("%s=%.2f" % p for p in pairs))
 
-        if conf < MODEL_CONF_THRESHOLD:
-            print("[VISION] 확신 부족(%.2f < %.2f) - HSV로 넘긴다" % (conf, MODEL_CONF_THRESHOLD))
+        label = self._class_map[idx]
+        threshold = BACKGROUND_CONF_THRESHOLD if label == "background" else MODEL_CONF_THRESHOLD
+        if conf < threshold:
+            print("[VISION] 확신 부족(%.2f < %.2f) - HSV로 넘긴다" % (conf, threshold))
             return None
-        return self._class_map[idx]
+        return label
 
     def _classify_crop_hsv(self, roi):
         """HSV 규칙 기반 작물 분류 (폴백용).

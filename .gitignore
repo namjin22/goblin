@@ -16,6 +16,9 @@ log.csv
 run.log
 growth_photos/
 
+# Claude Code 개인 설정 (사람마다 다름)
+.claude/settings.local.json
+
 # 에디터 / OS
 .vscode/
 .idea/

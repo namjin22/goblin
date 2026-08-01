@@ -34,7 +34,7 @@ SPRINKLER_SPEED = 60
 VENT_MANUAL_HOLD = 8.0
 
 SCAN_INTERVAL = 6.0        # 몇 초마다 작물을 촬영해서 분류할지
-CAMERA_FRAME_INTERVAL = 0.5   # 실시간 미리보기 프레임 갱신 주기(초). 분류(SCAN_INTERVAL)와는 별개
+CAMERA_FRAME_INTERVAL = 5.0   # 미리보기 프레임 갱신 주기(초). 그 순간의 스냅샷을 5초마다 보여주는 방식 - 분류(SCAN_INTERVAL)와는 별개
 
 GROWTH_PHOTO_DIR = "growth_photos"
 GROWTH_PHOTO_INTERVAL = 7 * 24 * 3600.0   # 1주일마다 성장 사진 한 장
@@ -46,7 +46,7 @@ BEEP_DURATION = 0.4        # 경고음 길이. 이 시간 뒤 자동으로 끈�
 # 다르다(상추 20도, 옥수수 28도...). 이 기준은 그거랑 다르다 - "사람이
 # 온열질환 위험에 노출되는 온도"는 작물이 무엇이든 항상 똑같아야 하므로
 # 고정값을 쓴다.
-HEAT_DANGER_TEMP = 34.0     # 이 온도 이상이면 농부 온열질환 위험
+HEAT_DANGER_TEMP = 29.0     # 이 온도 이상이면 농부 온열질환 위험 (원래 34 - 시연 촬영용으로 임시로 낮춤, 실사용 시 34로 되돌릴 것)
 HEAT_ALARM_DURATION = 180.0  # 경고음을 울리는 총 시간(초) = 3분
 HEAT_ALARM_PULSE = 0.6      # 삑 소리 한 번의 길이(초)
 HEAT_ALARM_GAP = 0.6        # 삑 소리 사이 무음 간격(초) - 계속 울리면 시연장 참사라 펄스로
@@ -109,10 +109,15 @@ RAIN_HUMIDITY_THRESHOLD = 85.0
 class Controller:
     """센서값을 판단하고 액추에이터를 움직인다. 메인 루프에서만 쓴다."""
 
-    def __init__(self, hw, store, vision=None, camera_preview=False):
+    def __init__(self, hw, store, vision=None, camera_preview=False, force_crop=None):
         self.hw = hw
         self.store = store
         self.vision = vision
+        # [시연 촬영용, 임시] 켜두면 실제 카메라 인식 결과를 무시하고 항상
+        # 이 작물로 취급한다 - 브릭 인식이 매번 잘 안 맞아서 촬영이 힘들 때
+        # 쓴다. 촬영 끝나면 반드시 끌 것 (묻지 않는다는 핵심 정체성과
+        # 어긋나는 임시 우회다).
+        self.force_crop = force_crop
         # [기본 꺼짐] 실시간 미리보기가 vision.capture()를 훨씬 자주(0.5초마다)
         # 부르는데, 실물 테스트에서 이게 메인 루프를 통째로 멈추게 하는
         # 것으로 의심됨(웹캠 드라이버가 잦은 호출에 멈추는 듯) - 분류용
@@ -307,7 +312,7 @@ class Controller:
         if frame is None:
             return
 
-        crop_key = self.vision.classify_crop(frame)
+        crop_key = self.force_crop if self.force_crop else self.vision.classify_crop(frame)
 
         updates = {}
         crop_started_at = self.store.get("crop_started_at")
@@ -415,12 +420,12 @@ class Controller:
         self.hw.show_text(text)
 
     def update_heat_alarm(self, temp):
-        """온도가 HEAT_DANGER_TEMP(34도) 이상이면 3분간 경고음을 울린다.
+        """온도가 HEAT_DANGER_TEMP 이상이면 3분간 경고음을 울린다.
 
         작물별 vent_temp(냉방 판단)와는 별개의, 사람(농부) 안전을 위한
         고정 기준이다. 계속 울리면 시연장 참사라 삑-무음을 반복하는
-        펄스로 만들었다. 34도 아래로 내려갔다가 다시 올라가면 새로
-        경고가 시작된다(같은 고온 구간에서는 한 번만 3분 채운다).
+        펄스로 만들었다. HEAT_DANGER_TEMP 아래로 내려갔다가 다시 올라가면
+        새로 경고가 시작된다(같은 고온 구간에서는 한 번만 3분 채운다).
         """
         now = time.time()
 

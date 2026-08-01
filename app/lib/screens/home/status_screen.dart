@@ -134,7 +134,7 @@ class _CameraPreviewState extends State<_CameraPreview> {
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted) setState(() => _tick++);
     });
   }

@@ -1,8 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 릴리즈 빌드는 debug 매니페스트의 INTERNET 권한을 물려받지 못한다 -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="nongkkaebi_app"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
