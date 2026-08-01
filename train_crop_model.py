@@ -58,11 +58,35 @@ def discover_classes():
 
 
 def augment(img):
-    """오프라인 증강: 원본 + 좌우반전 + 밝기 변화 2종. 학습 데이터를 4배로 늘린다."""
+    """오프라인 증강: 좌우반전 + 밝기 + 회전 + 확대(줌).
+
+    [배경] 15장짜리 원본 사진으로 학습한 모델이 원본 사진과 똑같이 찍으면
+    100% 맞히는데(실제 확인함), 실물 카메라 - 브릭 개수가 많아지거나
+    조명이 조금만 달라도 엉뚱한 클래스로 쏠리는 문제가 있었다. 원본과
+    조건이 100% 같을 때만 잘 맞히는 건 과적합 신호라, 학습 때부터 더
+    다양한 조건(밝기 범위 확대, 회전, 확대/축소)을 흉내 내서 조금 달라진
+    실물 조건에도 버틸 수 있게 한다.
+    """
     variants = [img, cv2.flip(img, 1)]
-    for factor in (0.8, 1.2):
+
+    for factor in (0.7, 0.85, 1.15, 1.3):
         bright = np.clip(img.astype(np.float32) * factor, 0, 255).astype(np.uint8)
         variants.append(bright)
+
+    h, w = img.shape[:2]
+    center = (w / 2.0, h / 2.0)
+
+    for angle in (-15, 15):
+        matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+        rotated = cv2.warpAffine(img, matrix, (w, h), borderMode=cv2.BORDER_REPLICATE)
+        variants.append(rotated)
+
+    # 확대(zoom in) - 브릭이 늘어서 화면을 더 채우는 실물 상황을 흉내낸다.
+    for scale in (1.15, 1.3):
+        matrix = cv2.getRotationMatrix2D(center, 0, scale)
+        zoomed = cv2.warpAffine(img, matrix, (w, h), borderMode=cv2.BORDER_REPLICATE)
+        variants.append(zoomed)
+
     return variants
 
 
@@ -72,17 +96,20 @@ def load_embeddings(model, classes):
     for label_idx, name in enumerate(classes):
         class_dir = os.path.join(DATA_DIR, name)
         files = [f for f in os.listdir(class_dir) if f.lower().endswith(".jpg")]
-        print("  %-12s %3d장 원본 -> %3d장 (증강 포함)"
-              % (name, len(files), len(files) * 4))
+        n_variants = None
         for fname in files:
             img = cv2.imread(os.path.join(class_dir, fname))
             if img is None:
                 continue
-            for variant in augment(img):
+            variants = augment(img)
+            n_variants = len(variants)
+            for variant in variants:
                 tensor = preprocess(variant)
                 emb = model.embed(tensor)
                 X.append(emb.squeeze(0))
                 y.append(label_idx)
+        print("  %-12s %3d장 원본 -> %3d장 (증강 포함, %d배)"
+              % (name, len(files), len(files) * (n_variants or 0), n_variants or 0))
     return torch.stack(X), torch.tensor(y, dtype=torch.long)
 
 
@@ -114,14 +141,17 @@ def main():
 
     print("\n임베딩 캐싱 중...")
     X, y = load_embeddings(model, classes)
-    print("총 %d개 임베딩 (원본 x4 증강)" % len(X))
+    print("총 %d개 임베딩 (증강 포함)" % len(X))
 
     train_idx, val_idx = stratified_split(y, VAL_RATIO, SEED)
     X_train, y_train = X[train_idx], y[train_idx]
     X_val, y_val = X[val_idx], y[val_idx]
     print("학습 %d개 / 검증 %d개" % (len(X_train), len(X_val)))
 
-    optimizer = torch.optim.Adam(model.head.parameters(), lr=LR)
+    # weight_decay(L2 정규화) - 데이터가 적을 때 선형 헤드가 몇몇 픽셀
+    # 패턴에 과도하게 의존하는 걸 눌러준다. 실물에서 조건이 살짝 달라져도
+    # 더 안정적으로 버티게 하려는 목적.
+    optimizer = torch.optim.Adam(model.head.parameters(), lr=LR, weight_decay=1e-3)
     loss_fn = nn.CrossEntropyLoss()
 
     print("\n선형 헤드 학습 중...")
