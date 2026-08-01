@@ -76,7 +76,7 @@ class _PairingScreenState extends State<PairingScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 10),
                   HeroGroup(
                     bubbleText: '몇 가지만\n알려주시면 돼요!',
                     pose: MascotPose.wave,
@@ -129,10 +129,10 @@ class _FieldLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 4),
+      padding: const EdgeInsets.only(top: 6, bottom: 2),
       child: Align(
         alignment: Alignment.center,
-        child: Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.ink)),
+        child: Text(text, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.sub)),
       ),
     );
   }
@@ -149,18 +149,18 @@ class _FieldBox extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      height: 42,
+      height: 36,
       decoration: BoxDecoration(
         color: const Color(0xFFFAFAFA),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.line, width: 2),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: AppColors.line, width: 1.5),
       ),
       alignment: Alignment.center,
       child: TextField(
         controller: controller,
         textAlign: TextAlign.center,
         keyboardType: keyboardType,
-        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.ink),
+        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink),
         decoration: InputDecoration(
           hintText: hint,
           border: InputBorder.none,

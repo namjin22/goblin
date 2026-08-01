@@ -11,8 +11,8 @@ class HeroGroup extends StatelessWidget {
     required this.bubbleText,
     required this.pose,
     required this.card,
-    this.mascotSize = 200,
-    this.overlap = 42,
+    this.mascotSize = 170,
+    this.overlap = 34,
   });
 
   final String bubbleText;
