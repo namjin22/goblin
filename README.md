@@ -61,7 +61,7 @@ Flask 스레드  상태 읽기, 명령 큐에 넣기. 하드웨어 절대 금지
 | LED | **생장등**. 주변이 어두우면 켠다 (마젠타) |
 | Display | 2줄 짧은 단어 |
 | Speaker | alert 진입 순간 0.4초 삑 |
-| Motor A | 환기창 (모터B와 함께 움직여야 열림/닫힘, 거울 대칭 장착) |
+| Motor A | 환기창 (모터B와 함께 움직여야 열림/닫힘) |
 | Motor B | 환기창 |
 | Motor (스프링클러) | 스프링클러 (모형, 물 안 나옴) |
 
@@ -196,7 +196,7 @@ ToF를 쓰지 않으므로 **6초마다 자동으로 촬영**한다 (`SCAN_INTER
 
 ## 남은 작업
 
-1. **환기창 모터 각도 재확인** — 처음 250도/반대부호로 테스트했다가 실패해서 150도/같은부호로 고침. `python hwtest.py --motor`로 실제로 문이 잘 열리고 닫히는지 다시 확인할 것.
+1. **환기창 모터 방향/각도 보정** — `motor.angle`은 절대각이라 "0=닫힘"이 보장 안 됨(모터마다 조립 기준 다름). `python hwtest.py --motor`를 돌리면 지금 닫힌 상태를 기준점으로 저장하고, 열어본 결과를 물어보면서 방향/각도를 맞을 때까지 대화형으로 조정해준다. 확정되면 나온 값을 `hardware.py`의 `VENT_A_SIGN`/`VENT_B_SIGN`/`VENT_ROTATION_DEG`에 반영할 것.
 2. **`min_lux` 현장 튜닝** — 생장등 켰을 때와 껐을 때 조도를 각각 재서 그 중간으로 `profiles.py`를 고칠 것. `python hwtest.py --sensor`
 3. **`RAIN_HUMIDITY_THRESHOLD` 현장 튜닝** — 실제 습도 값을 보고 "비" 오탐이 안 나도록 `controller.py`에서 조정.
 4. 딥러닝 분류기(`lettuce`/`corn`/`carrot`/`background`)는 학습 완료됨. 조명·배치가 바뀌면 `collect_data.py`로 재촬영 + `train_crop_model.py` 재학습.
@@ -205,10 +205,12 @@ ToF를 쓰지 않으므로 **6초마다 자동으로 촬영**한다 (`SCAN_INTER
 
 ```
 motors[VENT_MOTOR_A_INDEX]    = 환기창 모터A
-motors[VENT_MOTOR_B_INDEX]    = 환기창 모터B (모터A와 거울 대칭 장착 - 같은 각도를 줘야 열림/닫힘)
+motors[VENT_MOTOR_B_INDEX]    = 환기창 모터B (모터A와 함께 움직여야 열림/닫힘)
 motors[SPRINKLER_MOTOR_INDEX] = 스프링클러 (모형. 실제로 물은 안 나온다)
 ```
 
-2026-08-01 실측값: `VENT_MOTOR_A_INDEX=2`, `VENT_MOTOR_B_INDEX=0`, `SPRINKLER_MOTOR_INDEX=1`, 회전각 150도. 장비마다 다를 수 있으니 `python hwtest.py --motor`로 매번 재확인할 것.
+2026-08-01 실측 인덱스: `VENT_MOTOR_A_INDEX=2`, `VENT_MOTOR_B_INDEX=0`, `SPRINKLER_MOTOR_INDEX=1` (장비마다 다를 수 있으니 `python hwtest.py --motor`로 매번 재확인할 것).
+
+`VENT_A_SIGN`/`VENT_B_SIGN`/`VENT_ROTATION_DEG`는 아직 실물로 확정 전 - `hwtest.py --motor`의 대화형 보정으로 결정한다. "닫힘=절대각 0"이 아니라 프로그램이 시작될 때(문이 실제로 닫힌 상태에서) 각 모터의 현재 각도를 읽어 그걸 닫힘 기준으로 삼는다(`ModiHardware.calibrate_vent_home()`).
 
 환기창 두 모터 중 하나라도 없으면 연결 자체가 실패한다(`HardwareError`). 스프링클러 모터만 없으면 경고만 뜨고 나머지는 정상 동작한다.
