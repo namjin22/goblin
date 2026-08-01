@@ -26,6 +26,13 @@ VENT_DURATION = 2.5        # 환기창 여닫는 데 걸리는 시간(초)
 SPRINKLER_DURATION = 4.0   # 스프링클러 회전 시간(초)
 SPRINKLER_SPEED = 60
 
+# [중요] 사람이 방금 앱으로 환기창을 조작했으면, 자동 로직이 곧바로
+# 뒤집으면 안 된다. 안 그러면 "닫기를 눌러도 안 닫힌 것처럼" 보인다 -
+# 실제로 겪은 문제: 실내온도(29도)가 옥수수 기준(28도)보다 높은 상태에서
+# 사람이 닫자마자, 다음 틱에 "덥다 -> 열어라" 자동조치가 0.15초만에
+# 다시 열어버렸다. 생장등의 LIGHT_MIN_HOLD와 같은 원리로 유예시간을 둔다.
+VENT_MANUAL_HOLD = 8.0
+
 SCAN_INTERVAL = 6.0        # 몇 초마다 작물·흙을 촬영할지
 
 GROWTH_PHOTO_DIR = "growth_photos"
@@ -111,6 +118,8 @@ class Controller:
         self._light_changed_at = 0.0
         self._light_boost = 0.0        # 생장등이 만드는 밝기 (자동 학습)
         self._lux_before_light = 0.0   # 켜기 직전의 조도
+
+        self._vent_manual_at = 0.0     # 사람이 마지막으로 앱에서 환기창을 조작한 시각
 
     # ------------------------------------------------------ 바쁨 상태
     @property
@@ -361,6 +370,10 @@ class Controller:
     # ------------------------------------------------------ 명령 처리
     def handle_command(self, cmd):
         """앱 또는 하드웨어 버튼에서 온 명령을 실행한다."""
+        if cmd in ("vent_open", "vent_close", "vent_toggle"):
+            # 사람이 방금 조작했다는 기록. VENT_MANUAL_HOLD 동안은 자동
+            # 조치가 이걸 뒤집지 않는다 (아래 tick()의 자동 조치 단계 참고).
+            self._vent_manual_at = time.time()
         if cmd == "vent_open":
             return self.open_vent()
         if cmd == "vent_close":
@@ -416,10 +429,14 @@ class Controller:
         #    "묻지 않는다"의 실체다.
         #    [예외] 환기창을 자동으로 닫는 건 "비 감지"(RAIN_HUMIDITY_THRESHOLD)
         #    한 가지 경우뿐이다. 그 외에는(예: 그냥 시원해짐) 여전히 사람이 닫는다.
+        #    [중요] 사람이 방금(VENT_MANUAL_HOLD 이내) 앱으로 조작했으면
+        #    자동 조치가 그걸 곧바로 뒤집지 않는다 - 안 그러면 "닫아도
+        #    바로 다시 열리는" 것처럼 보인다 (실제로 겪은 문제).
+        vent_manual_hold = time.time() - self._vent_manual_at < VENT_MANUAL_HOLD
         if auto_mode and auto_action and not self.busy:
-            if auto_action == "vent_open" and not snap.get("vent_open"):
+            if auto_action == "vent_open" and not snap.get("vent_open") and not vent_manual_hold:
                 self.open_vent()
-            elif auto_action == "vent_close" and snap.get("vent_open"):
+            elif auto_action == "vent_close" and snap.get("vent_open") and not vent_manual_hold:
                 self.close_vent()
             elif auto_action == "water":
                 self.water()

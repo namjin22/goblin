@@ -130,7 +130,7 @@ function toast(text) {
 // --- [1] 상태 폴링 ---
 async function poll() {
   try {
-    const r = await fetch(API + '/api/state');
+    const r = await fetch(API + '/api/state', { cache: 'no-store' });
     const d = await r.json();
     document.getElementById('offline').style.display = 'none';
 
@@ -180,7 +180,7 @@ async function send(cmd) {
 // --- [3] 기록 ---
 async function loadLogs() {
   try {
-    const r = await fetch(API + '/api/history?limit=20');
+    const r = await fetch(API + '/api/history?limit=20', { cache: 'no-store' });
     const d = await r.json();
     document.getElementById('logs').innerHTML = d.items.map(i => {
       const t = new Date(i.at * 1000);

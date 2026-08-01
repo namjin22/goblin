@@ -74,6 +74,11 @@ def create_app(store):
         resp.headers["Access-Control-Allow-Origin"] = "*"
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
         resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        # [중요] 캐시 헤더가 없으면 일부 모바일 브라우저(삼성인터넷 등)가
+        # /api/state 같은 GET 응답을 자체적으로 캐싱해버린다. 서버 로그로는
+        # 매초 새로 응답하는데 화면은 그대로 멈춰 보이는 원인이 이거였다.
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
         return resp
 
     @app.route("/")
