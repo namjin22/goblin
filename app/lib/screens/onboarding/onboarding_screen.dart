@@ -90,22 +90,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            if (!isLast)
-              Positioned(
-                top: 8,
-                right: 20,
-                child: GestureDetector(
-                  onTap: _skip,
-                  child: const Text(
-                    '건너뛰기 →',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.sub,
-                    ),
-                  ),
-                ),
-              ),
             PageView.builder(
               controller: _controller,
               itemCount: _pages.length,
@@ -160,6 +144,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 );
               },
             ),
+            // PageView 안의 스크롤뷰가 겹쳐진 자리의 탭을 먼저 가로채므로,
+            // Stack에서 나중에(=위에) 그려지는 위치에 둬야 실제로 눌린다.
+            if (!isLast)
+              Positioned(
+                top: 8,
+                right: 20,
+                child: GestureDetector(
+                  onTap: _skip,
+                  child: const Text(
+                    '건너뛰기 →',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.sub,
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
