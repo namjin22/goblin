@@ -20,6 +20,7 @@ except ImportError:
     print("pymodi-plus가 없다.  pip install pymodi-plus")
     sys.exit(1)
 
+import hardware
 from hardware import ModiHardware
 
 
@@ -178,33 +179,71 @@ def test_motors(bundle, results):
         print("  모터 역할을 특정하지 못했다. 다시 실행해볼 것.")
         results["Motor"] = False
 
-    # 환기창 두 모터가 함께 움직이는지 확인.
-    # hardware.py의 open_vent()/close_vent()를 그대로 호출한다 - 여기서 각도
-    # 계산을 따로 하면 나중에 hardware.py를 고쳐도 이 데모는 안 고쳐져서
-    # 서로 다른 동작을 테스트하게 될 위험이 있다.
+    # 환기창 열림 방향/각도 대화형 보정.
+    #
+    # [중요] pymodi_plus 소스(motor.py)를 직접 확인해보니 motor.angle은
+    # 진짜 절대각(엔코더 현재값)이고, "절대각 0 = 닫힘"이라는 보장이 전혀
+    # 없다 - 모터마다 조립 기준이 다르면 0의 의미도 다르다. 그래서 "지금
+    # 실제로 닫혀 있는 위치"를 읽어서 그걸 닫힘 기준으로 삼는 방식으로
+    # 바꿨다. 부호(방향)와 각도는 실물에서만 확정할 수 있어서, 여기서
+    # 바로 열어보고 결과를 물어 맞을 때까지 값을 조정한다.
     if "vent_a" in roles and "vent_b" in roles:
+        vent_a = motors[roles["vent_a"]]
+        vent_b = motors[roles["vent_b"]]
+
+        line("5. 환기창 열림/닫힘 보정")
+        input("  >> 환기창을 완전히 닫힌 상태로 손으로 맞춰두고 Enter ")
         hw = ModiHardware()
-        hw.vent_motor_a = motors[roles["vent_a"]]
-        hw.vent_motor_b = motors[roles["vent_b"]]
+        hw.vent_motor_a = vent_a
+        hw.vent_motor_b = vent_b
+        hw.calibrate_vent_home()
 
-        # [중요] 바로 위 식별 단계에서 motor.speed = 40 으로 2.5초씩 돌렸기
-        # 때문에, 두 모터는 지금 "어디인지 모르는" 임의의 각도에 서 있다.
-        # .angle이 절대 목표각이라면, 이 상태에서 곧바로 열기를 시도하면
-        # 모터마다 실제로 움직여야 하는 양이 완전히 달라진다(하나는 이미
-        # 근처라 거의 안 움직이고, 하나는 반대편이라 훨씬 많이 움직이는 식).
-        # 그래서 먼저 닫힘(0도)으로 맞춰서 같은 기준점에서 시작하게 한다.
-        print("\n  (식별 단계에서 임의 위치로 돌아갔을 수 있어 먼저 닫힘 상태로 맞춘다)")
-        hw.close_vent(speed=50)
-        time.sleep(2.5)
+        confirmed = False
+        while True:
+            print("\n  지금 설정: 회전각=%d도  A방향=%s  B방향=%s"
+                  % (hardware.VENT_ROTATION_DEG,
+                     "+" if hardware.VENT_A_SIGN > 0 else "-",
+                     "+" if hardware.VENT_B_SIGN > 0 else "-"))
+            print("  여는 중...")
+            hw.open_vent(speed=50)
+            time.sleep(2.5)
 
-        print("  환기창 열기/닫기 확인 (hardware.py의 open_vent/close_vent 그대로 호출)")
-        print("    여는 중...")
-        hw.open_vent(speed=50)
-        time.sleep(2.5)
-        print("    닫는 중...")
-        hw.close_vent(speed=50)
-        time.sleep(2.5)
-        results["Vent angle"] = ask("환기창이 열렸다 닫혔나?")
+            print("  결과가 어땠나?")
+            print("    1) 딱 맞게 열렸다 - 보정 끝")
+            print("    2) 너무 조금 열렸다 (각도 20도 키움)")
+            print("    3) 너무 많이 열렸다 (각도 20도 줄임)")
+            print("    4) 모터A가 반대 방향으로 움직였다 (A 부호 반전)")
+            print("    5) 모터B가 반대 방향으로 움직였다 (B 부호 반전)")
+            print("    6) 둘 다 반대 방향이었다 (둘 다 반전)")
+            print("    0) 그냥 닫고 다시 시도")
+            ans = input("  >> 번호 선택: ").strip()
+
+            print("  닫는 중...")
+            hw.close_vent(speed=50)
+            time.sleep(2.5)
+
+            if ans == "1":
+                confirmed = True
+                break
+            elif ans == "2":
+                hardware.VENT_ROTATION_DEG += 20
+            elif ans == "3":
+                hardware.VENT_ROTATION_DEG = max(10, hardware.VENT_ROTATION_DEG - 20)
+            elif ans == "4":
+                hardware.VENT_A_SIGN *= -1
+            elif ans == "5":
+                hardware.VENT_B_SIGN *= -1
+            elif ans == "6":
+                hardware.VENT_A_SIGN *= -1
+                hardware.VENT_B_SIGN *= -1
+
+        print("\n" + "=" * 54)
+        print("  확정된 값 - hardware.py 위쪽 상수를 아래처럼 맞출 것:")
+        print("      VENT_A_SIGN = %d" % hardware.VENT_A_SIGN)
+        print("      VENT_B_SIGN = %d" % hardware.VENT_B_SIGN)
+        print("      VENT_ROTATION_DEG = %d" % hardware.VENT_ROTATION_DEG)
+        print("=" * 54)
+        results["Vent angle"] = confirmed
 
 
 def cleanup(bundle):

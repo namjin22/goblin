@@ -26,17 +26,28 @@ class HardwareError(Exception):
 #        hwtest.py 로 어느 모터가 어느 것인지 확인한 뒤,
 #        다르면 아래 숫자들을 실제 배치에 맞게 바꾼다.
 #        (2026-08-01 hwtest.py 실측: motors[2]=A, motors[0]=B, motors[1]=스프링클러)
-#
-# [환기창은 모터가 2개다] 모터A와 모터B가 함께 돌아야 문이 열리고 닫힌다.
-# 처음엔 "서로 반대 부호"(A -250 / B +250)로 가정했으나, 실물로 돌려보니
-# 모터A가 반대로 돌았다 - 두 모터가 서로 마주보게 달려서(거울 대칭) 같은
-# 코드상 부호를 줘야 실제로는 반대 방향(마주보고 열림)이 나온다.
-# 그래서 지금은 A/B 둘 다 같은 부호를 준다. 회전각도 250 -> 150으로 축소
-# (250도는 실물에서 너무 많이 돌아 걸렸다).
 VENT_MOTOR_A_INDEX = 2
 VENT_MOTOR_B_INDEX = 0
 SPRINKLER_MOTOR_INDEX = 1
-VENT_ROTATION_DEG = 150
+
+# [핵심] pymodi_plus 소스(motor.py)를 직접 확인한 결과:
+#   - motor.angle 은 진짜 절대각(엔코더가 읽는 현재값, 0~360)이다.
+#   - set_angle()은 목표각이 0~360 범위를 벗어나면 "조용히 아무 일도
+#     안 한다" (음수를 주면 무시됨 - 첫 시도(-250)가 안 먹힌 이유).
+#   - "절대각 0"이 물리적으로 닫힌 위치라는 보장은 전혀 없다. 모터A는
+#     실측 결과 0이 이미 닫힌 위치를 지나친 지점이었다(0으로 보내면
+#     더 닫히는 방향으로 움직임) - 두 모터의 조립 기준이 다르다.
+#
+# 그래서 "0=닫힘"을 가정하지 않고, 프로그램이 시작할 때(문이 실제로
+# 닫혀 있는 상태에서) 각 모터의 "현재" 각도를 읽어 그걸 닫힘 기준으로
+# 삼는다 (ModiHardware.connect() -> calibrate_vent_home()).
+# 여는 건 그 기준에서 VENT_A_SIGN/VENT_B_SIGN 방향으로 VENT_ROTATION_DEG만큼.
+#
+# [미확정] 아래 부호는 hwtest.py의 대화형 보정(calibrate)으로 실측 후
+# 확정할 것 - 지금 값은 첫 시도 기준값이다.
+VENT_A_SIGN = -1
+VENT_B_SIGN = 1
+VENT_ROTATION_DEG = 100
 
 
 # --------------------------------------------------------- 공통 인터페이스
@@ -94,9 +105,11 @@ class ModiHardware(BaseHardware):
 
     모터 배치 (물리적으로 모터 모듈 3개)
       motors[VENT_MOTOR_A_INDEX] = 환기창 모터A
-      motors[VENT_MOTOR_B_INDEX] = 환기창 모터B (A와 거울 대칭으로 장착 - 같은 코드
-                                    각도를 줘야 실제로 마주보며 반대 방향으로 열린다)
+      motors[VENT_MOTOR_B_INDEX] = 환기창 모터B
       motors[SPRINKLER_MOTOR_INDEX] = 스프링클러 (급수 표현용, 실제로 물은 나오지 않음)
+
+    [중요] 환기창은 "절대각 0 = 닫힘"이 아니다. connect() 시점에 실제
+    닫혀 있는 위치를 기준으로 삼는다 (calibrate_vent_home 참고).
     """
 
     def __init__(self, conn_type=None, network_uuid=None):
@@ -108,6 +121,8 @@ class ModiHardware(BaseHardware):
         self.vent_motor_a = None
         self.vent_motor_b = None
         self.sprinkler_motor = None
+        self._vent_a_home = None
+        self._vent_b_home = None
 
     def connect(self):
         import modi_plus  # 이 파일 안에서만 import
@@ -169,7 +184,21 @@ class ModiHardware(BaseHardware):
 
         # 센서 첫 값은 0으로 나온다. 반드시 대기.
         time.sleep(1)
+        self.calibrate_vent_home()
         print("[HW] 초기화 완료")
+
+    def calibrate_vent_home(self):
+        """지금 위치를 환기창 '닫힘' 기준으로 저장한다.
+
+        [반드시] 이 시점에 환기창이 실제로 닫혀 있어야 한다. 프로그램을
+        시작할 때(또는 hwtest.py에서) 문을 손으로 닫아둔 상태에서 호출할 것.
+        절대각 0이 닫힘이라는 보장이 없어서(모터마다 조립 기준이 다름)
+        "지금 각도"를 기준점으로 삼는 방식으로 바꿨다.
+        """
+        self._vent_a_home = self.vent_motor_a.angle
+        self._vent_b_home = self.vent_motor_b.angle
+        print("[HW] 환기창 닫힘 기준 각도 저장: A=%d도 B=%d도 (지금 상태 = 닫힘)"
+              % (self._vent_a_home, self._vent_b_home))
 
     def close(self):
         """종료 시 하드웨어를 안전한 상태로 되돌린다."""
@@ -218,17 +247,19 @@ class ModiHardware(BaseHardware):
         self.speaker.reset()
 
     def open_vent(self, speed=50):
-        # 실물 테스트(2026-08-01)로 확인: 모터A/B 둘 다 같은 부호로 줘야
-        # 실제로는 마주보고 반대 방향으로 열린다 (모터가 서로 거울 대칭으로
-        # 달려있어서). 처음엔 반대 부호로 가정했다가 모터A가 반대로 도는
-        # 걸 보고 고쳤다.
-        self.vent_motor_a.angle = VENT_ROTATION_DEG, speed
-        self.vent_motor_b.angle = VENT_ROTATION_DEG, speed
+        # 닫힘 기준(calibrate_vent_home)에서 부호 방향으로 회전한다.
+        # set_angle()이 0~360 범위를 벗어나면 조용히 무시하므로 % 360으로
+        # 항상 유효 범위 안에 들어오게 한다.
+        target_a = (self._vent_a_home + VENT_A_SIGN * VENT_ROTATION_DEG) % 360
+        target_b = (self._vent_b_home + VENT_B_SIGN * VENT_ROTATION_DEG) % 360
+        self.vent_motor_a.angle = target_a, speed
+        self.vent_motor_b.angle = target_b, speed
 
     def close_vent(self, speed=50):
-        # 열 때와 반대 방향으로 같은 각도만큼 되돌아가 닫힌다.
-        self.vent_motor_a.angle = 0, speed
-        self.vent_motor_b.angle = 0, speed
+        # 닫힘 기준으로 되돌아간다 (절대각 0이 아니라 calibrate_vent_home으로
+        # 저장해둔 실제 닫힘 각도).
+        self.vent_motor_a.angle = self._vent_a_home, speed
+        self.vent_motor_b.angle = self._vent_b_home, speed
 
     def set_sprinkler(self, speed):
         if self.sprinkler_motor:
