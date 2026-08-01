@@ -8,13 +8,13 @@
 기록해두고 매 틱마다 확인하는 상태머신으로 만든다.
 
 [모듈 역할]
-  Env      온도 -> 환기 판단 / 조도 -> 생장등 판단 / 습도 -> 건조도(급수) 판단
-  Button   창문 열기/닫기 토글 (이 일만 한다)
-  LED      생장등 (조도가 낮으면 켠다)
-  Display  짧은 단어 2줄
-  Speaker  alert 진입 순간에만 짧게 삑
-  Motor[0] 환기창
-  Motor[1] 스프링클러
+  Env       온도 -> 환기 판단 / 조도 -> 생장등 판단 / 습도 -> 건조도(급수)·비 감지 판단
+  Button    창문 열기/닫기 토글 (이 일만 한다)
+  LED       생장등 (조도가 낮으면 켠다)
+  Display   짧은 단어 2줄
+  Speaker   alert 진입 순간에만 짧게 삑 (온열질환 예방 경고 포함)
+  Motor A/B 환기창 (두 모터가 반대 방향으로 함께 움직여야 열리고 닫힌다)
+  Motor     스프링클러
   * ToF, Dial, IMU, Joystick 미사용
 """
 
@@ -23,8 +23,6 @@ import time
 
 from profiles import get_profile
 
-VENT_OPEN_ANGLE = 90
-VENT_CLOSE_ANGLE = 0
 VENT_DURATION = 2.5        # 환기창 여닫는 데 걸리는 시간(초)
 SPRINKLER_DURATION = 4.0   # 스프링클러 회전 시간(초)
 SPRINKLER_SPEED = 60
@@ -78,6 +76,19 @@ def humidity_to_dryness(humidity):
     return round(max(0.0, min(100.0, 100.0 - humidity)), 1)
 
 
+# --- 날씨 판단 (비 감지 -> 자동 닫기) ---
+# [설계 변경] 기존 결정은 "환기창 자동 닫기 없음 - 닫는 건 사람이 한다"였다.
+# 이번에 팀 결정으로 예외를 하나 추가한다: 습도가 비정상적으로 높으면
+# "비가 오는 것 같다"고 보고 자동으로 닫는다. 날씨 API 없이 Env 습도만으로
+# 추정하는 것이므로 오탐이 있을 수 있다 - 우천은 아니어도 그냥 습한 날일 수 있다.
+# 그 외의 경우(그냥 시원해졌다 등)에는 여전히 자동으로 닫지 않는다 - 사람이 닫는다.
+#
+# [주의] 습도는 humidity_to_dryness()에서 건조도 계산에도 쓰인다. 급수 직후
+# 습도가 급등하면(Mock의 급수 시뮬레이션 등) 이 임계값을 넘어 "비"로 오인될
+# 수 있다 - 현장에서 실제 값 보고 재조정할 것.
+RAIN_HUMIDITY_THRESHOLD = 85.0
+
+
 class Controller:
     """센서값을 판단하고 액추에이터를 움직인다. 메인 루프에서만 쓴다."""
 
@@ -128,8 +139,8 @@ class Controller:
     def open_vent(self):
         if self.busy:
             return False
-        self.hw.set_vent(VENT_OPEN_ANGLE)
-        self.store.update(vent_angle=VENT_OPEN_ANGLE, vent_open=True)
+        self.hw.open_vent()
+        self.store.update(vent_open=True)
         self.store.add_history("vent_open", "창문을 열었습니다")
         self._start_action("vent_open", VENT_DURATION)
         return True
@@ -137,8 +148,8 @@ class Controller:
     def close_vent(self):
         if self.busy:
             return False
-        self.hw.set_vent(VENT_CLOSE_ANGLE)
-        self.store.update(vent_angle=VENT_CLOSE_ANGLE, vent_open=False)
+        self.hw.close_vent()
+        self.store.update(vent_open=False)
         self.store.add_history("vent_close", "창문을 닫았습니다")
         self._start_action("vent_close", VENT_DURATION)
         return True
@@ -146,7 +157,9 @@ class Controller:
     def toggle_vent(self):
         """열려 있으면 닫고, 닫혀 있으면 연다.
 
-        환기창은 자동으로 닫지 않는다. 사람이 Button 또는 앱으로 닫는다.
+        사람이 Button 또는 앱으로 조작할 때 쓴다. 자동 조치는 decide()의
+        auto_action("vent_open"/"vent_close")을 통해서만 닫거나 연다 - 온도로
+        열기, 비 감지(습도)로 닫기 두 경우만 자동이고 그 외엔 사람이 한다.
         """
         if self.store.get("vent_open"):
             return self.close_vent()
@@ -283,19 +296,26 @@ class Controller:
 
         반환: (level, 긴 문장, 짧은 단어, 자동조치)
               긴 문장 -> 앱 / 짧은 단어 -> Display
+
+        우선순위: 폭염(온열질환 예방, 열기) > 비 감지(닫기) > 건조(급수) > 정상.
+        폭염이 비 감지보다 우선인 이유: 사람 안전(온열질환)이 젖음 방지보다
+        급하다고 봤다 - 실제로 둘이 동시에 뜨는 경우는 드물 것이다.
         """
         profile = get_profile(snap.get("crop_key"))
         temp = snap.get("temperature")
+        humidity = snap.get("humidity")
         dry = snap.get("dryness")
         crop = profile["name"]
 
-        # 우선순위: 더위 > 건조 > 정상
         # 조도는 생장등이 알아서 처리하므로 메시지로 띄우지 않는다.
         if temp is not None and temp > profile["vent_temp"] + 3:
             return "alert", "너무 덥습니다. 창문을 열까요?", "더워요!", "vent_open"
 
         if temp is not None and temp > profile["vent_temp"]:
             return "warn", "조금 덥습니다", "조금 더움", "vent_open"
+
+        if humidity is not None and humidity > RAIN_HUMIDITY_THRESHOLD:
+            return "warn", "비가 오는 것 같아요. 창문을 닫을까요?", "비 옴", "vent_close"
 
         if dry is not None and dry > profile["dry_limit"]:
             return "alert", "흙이 말랐어요. 물을 줄까요?", "물 필요", "water"
@@ -400,9 +420,12 @@ class Controller:
         # 7) 자동 조치
         #    사람이 승인하지 않아도 시스템이 알아서 하는 부분.
         #    "묻지 않는다"의 실체다.
-        #    단, 환기창을 자동으로 '닫지는' 않는다. 닫는 건 사람이 한다.
+        #    [예외] 환기창을 자동으로 닫는 건 "비 감지"(RAIN_HUMIDITY_THRESHOLD)
+        #    한 가지 경우뿐이다. 그 외에는(예: 그냥 시원해짐) 여전히 사람이 닫는다.
         if auto_mode and auto_action and not self.busy:
             if auto_action == "vent_open" and not snap.get("vent_open"):
                 self.open_vent()
+            elif auto_action == "vent_close" and snap.get("vent_open"):
+                self.close_vent()
             elif auto_action == "water":
                 self.water()

@@ -57,13 +57,14 @@ Flask 스레드  상태 읽기, 명령 큐에 넣기. 하드웨어 절대 금지
 | 모듈 | 역할 |
 |---|---|
 | Network ×2 | USB 연결. 한 USB에 체인으로 연결 |
-| Env | 온도 → 환기 판단 / 조도 → 생장등 판단 / 습도 → 표시 |
+| Env | 온도 → 환기 판단 / 조도 → 생장등 판단 / 습도 → 건조도(급수)·비 감지(자동 닫기) 판단 |
 | Button | **창문 열기/닫기 토글** — 이 일만 한다 |
 | LED | **생장등**. 주변이 어두우면 켠다 (마젠타) |
 | Display | 2줄 짧은 단어 |
 | Speaker | alert 진입 순간 0.4초 삑 |
-| Motor[0] | 환기창 |
-| Motor[1] | 스프링클러 (모형, 물 안 나옴) |
+| Motor A | 환기창 (모터B와 반대 방향으로 함께 움직여야 열림/닫힘) |
+| Motor B | 환기창 |
+| Motor (스프링클러) | 스프링클러 (모형, 물 안 나옴) |
 
 미사용: **ToF**, IMU, Joystick, Dial
 
@@ -110,7 +111,8 @@ ToF를 쓰지 않으므로 **6초마다 자동으로 촬영**한다 (`SCAN_INTER
 
 ## 환기창
 
-자동으로 **열기만** 한다. 닫는 것은 사람이 한다 (Button 또는 앱).
+기본은 자동으로 **열기만** 한다. 닫는 것은 사람이 한다 (Button 또는 앱).
+단, Env 습도가 비정상적으로 높으면("비가 오는 것 같음") 자동으로 닫는 예외가 하나 있다 (`controller.RAIN_HUMIDITY_THRESHOLD`).
 
 ## 앱 담당자용 API
 
@@ -193,15 +195,15 @@ ToF를 쓰지 않으므로 **6초마다 자동으로 촬영**한다 (`SCAN_INTER
 ## 남은 작업
 
 1. **`min_lux` 현장 튜닝** — 생장등 켰을 때와 껐을 때 조도를 각각 재서 그 중간으로 `profiles.py`를 고칠 것. `python hwtest.py --sensor`
-2. **작물 분류 임계값** — `vision.py`의 HSV 기준은 현장 조명에서 다시 잡아야 한다.
-3. **ROI 좌표** — `SOIL_ROI` / `CROP_ROI`를 실제 카메라 배치에 맞게 조정.
-4. **로그 CSV 저장** — 현재 이력은 메모리에만 있다. 재시작하면 사라진다.
+2. **`RAIN_HUMIDITY_THRESHOLD` 현장 튜닝** — 실제 습도 값을 보고 "비" 오탐이 안 나도록 `controller.py`에서 조정.
+3. 딥러닝 분류기(`lettuce`/`corn`/`carrot`/`background`)는 학습 완료됨. 조명·배치가 바뀌면 `collect_data.py`로 재촬영 + `train_crop_model.py` 재학습.
 
 ## 하드웨어 배치
 
 ```
-motors[0] = 환기창
-motors[1] = 스프링클러 (모형. 실제로 물은 안 나온다)
+motors[VENT_MOTOR_A_INDEX]    = 환기창 모터A
+motors[VENT_MOTOR_B_INDEX]    = 환기창 모터B (모터A와 반대 방향으로 함께 움직여야 열림/닫힘)
+motors[SPRINKLER_MOTOR_INDEX] = 스프링클러 (모형. 실제로 물은 안 나온다)
 ```
 
-모터가 1개만 연결돼도 경고만 뜨고 나머지는 정상 동작한다.
+환기창 두 모터 중 하나라도 없으면 연결 자체가 실패한다(`HardwareError`). 스프링클러 모터만 없으면 경고만 뜨고 나머지는 정상 동작한다.
