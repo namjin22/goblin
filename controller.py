@@ -41,6 +41,17 @@ GROWTH_PHOTO_INTERVAL = 7 * 24 * 3600.0   # 1주일마다 성장 사진 한 장
 
 BEEP_DURATION = 0.4        # 경고음 길이. 이 시간 뒤 자동으로 끈다
 
+# --- 온열질환 경고 (사람 안전 - 작물 기준과는 별개) ---
+# [중요] profiles.py의 vent_temp는 "작물이 덥다고 느끼는 온도"라 작물마다
+# 다르다(상추 20도, 옥수수 28도...). 이 기준은 그거랑 다르다 - "사람이
+# 온열질환 위험에 노출되는 온도"는 작물이 무엇이든 항상 똑같아야 하므로
+# 고정값을 쓴다.
+HEAT_DANGER_TEMP = 34.0     # 이 온도 이상이면 농부 온열질환 위험
+HEAT_ALARM_DURATION = 180.0  # 경고음을 울리는 총 시간(초) = 3분
+HEAT_ALARM_PULSE = 0.6      # 삑 소리 한 번의 길이(초)
+HEAT_ALARM_GAP = 0.6        # 삑 소리 사이 무음 간격(초) - 계속 울리면 시연장 참사라 펄스로
+HEAT_ALARM_FREQ = 1500      # 기존 alert 비프(880Hz)보다 높고 급하게 들리도록 구분
+
 # --- 생장등 ---
 # 식물 생장등은 적색+청색이라 실제로 마젠타빛으로 보인다.
 # 흰색으로 바꾸고 싶으면 (255, 255, 255).
@@ -120,6 +131,11 @@ class Controller:
         self._beep_until = 0.0
         self._last_level = None
         self._last_display = None
+
+        self._heat_alarm_active = False    # 지금 고온 구간 안에서 이미 경고를 시작했는지
+        self._heat_alarm_until = 0.0       # 경고 종료 예정 시각 (0이면 비활성)
+        self._heat_alarm_next_pulse = 0.0  # 다음 삑/무음 전환 시각
+        self._heat_alarm_pulse_on = False  # 지금 삑 소리가 나는 중인지
 
         self._light_on = False
         self._light_changed_at = 0.0
@@ -399,12 +415,56 @@ class Controller:
         self._last_display = text
         self.hw.show_text(text)
 
+    def update_heat_alarm(self, temp):
+        """온도가 HEAT_DANGER_TEMP(34도) 이상이면 3분간 경고음을 울린다.
+
+        작물별 vent_temp(냉방 판단)와는 별개의, 사람(농부) 안전을 위한
+        고정 기준이다. 계속 울리면 시연장 참사라 삑-무음을 반복하는
+        펄스로 만들었다. 34도 아래로 내려갔다가 다시 올라가면 새로
+        경고가 시작된다(같은 고온 구간에서는 한 번만 3분 채운다).
+        """
+        now = time.time()
+
+        if temp is not None and temp >= HEAT_DANGER_TEMP:
+            if not self._heat_alarm_active:
+                self._heat_alarm_active = True
+                self._heat_alarm_until = now + HEAT_ALARM_DURATION
+                self._heat_alarm_next_pulse = now
+                self.store.add_history(
+                    "heat_alarm",
+                    "온도 %.1f도 - 온열질환 위험. 경고음을 울립니다" % temp)
+        else:
+            # 위험 온도 아래로 내려오면 다음에 다시 넘을 때 재발동하도록 리셋한다.
+            self._heat_alarm_active = False
+
+        if now >= self._heat_alarm_until:
+            if self._heat_alarm_pulse_on:
+                self.hw.speaker_off()
+                self._heat_alarm_pulse_on = False
+            return
+
+        if now >= self._heat_alarm_next_pulse:
+            if self._heat_alarm_pulse_on:
+                self.hw.speaker_off()
+                self._heat_alarm_pulse_on = False
+                self._heat_alarm_next_pulse = now + HEAT_ALARM_GAP
+            else:
+                self.hw.beep(HEAT_ALARM_FREQ, 80)
+                self._heat_alarm_pulse_on = True
+                self._heat_alarm_next_pulse = now + HEAT_ALARM_PULSE
+
     def render_sound(self, level):
         """alert에 '진입하는 순간'에만 짧게 울린다.
 
-        계속 울리면 시연장에서 재앙이다.
+        계속 울리면 시연장에서 재앙이다. 온열질환 경고음(update_heat_alarm)이
+        스피커를 쓰는 동안에는 이 짧은 삑을 겹쳐 울리지 않는다 - 우선순위가
+        더 높은 경고라서 방해하면 안 된다.
         """
         now = time.time()
+
+        if now < self._heat_alarm_until:
+            self._last_level = level
+            return
 
         if self._beep_until and now >= self._beep_until:
             self._beep_until = 0.0
@@ -467,6 +527,7 @@ class Controller:
         # 4) 출력
         self.update_grow_light(env["illuminance"], profile)
         self.render_display(snap.get("crop_name", "확인 중"), short)
+        self.update_heat_alarm(env["temperature"])
         self.render_sound(level)
 
         # 5) 앱에서 온 명령 (물리 버튼 없음 - 수동 조작은 앱으로만 한다)
