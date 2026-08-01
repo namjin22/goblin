@@ -25,14 +25,18 @@ class HardwareError(Exception):
 #        케이블을 다시 꽂으면 순서가 바뀔 수 있다.
 #        hwtest.py 로 어느 모터가 어느 것인지 확인한 뒤,
 #        다르면 아래 숫자들을 실제 배치에 맞게 바꾼다.
+#        (2026-08-01 hwtest.py 실측: motors[2]=A, motors[0]=B, motors[1]=스프링클러)
 #
-# [환기창은 모터가 2개다] 모터A와 모터B가 서로 반대 방향으로 함께 돌아야
-# 문이 열리고 닫힌다. 블록코딩으로 확인된 값: 열 때 모터A -250도(반시계),
-# 모터B +250도(시계). 닫을 때는 둘 다 0도로 되돌린다(방향 반대로 250도).
-VENT_MOTOR_A_INDEX = 0
-VENT_MOTOR_B_INDEX = 1
-SPRINKLER_MOTOR_INDEX = 2
-VENT_ROTATION_DEG = 250
+# [환기창은 모터가 2개다] 모터A와 모터B가 함께 돌아야 문이 열리고 닫힌다.
+# 처음엔 "서로 반대 부호"(A -250 / B +250)로 가정했으나, 실물로 돌려보니
+# 모터A가 반대로 돌았다 - 두 모터가 서로 마주보게 달려서(거울 대칭) 같은
+# 코드상 부호를 줘야 실제로는 반대 방향(마주보고 열림)이 나온다.
+# 그래서 지금은 A/B 둘 다 같은 부호를 준다. 회전각도 250 -> 150으로 축소
+# (250도는 실물에서 너무 많이 돌아 걸렸다).
+VENT_MOTOR_A_INDEX = 2
+VENT_MOTOR_B_INDEX = 0
+SPRINKLER_MOTOR_INDEX = 1
+VENT_ROTATION_DEG = 150
 
 
 # --------------------------------------------------------- 공통 인터페이스
@@ -56,10 +60,6 @@ class BaseHardware:
 
     def read_dial(self):
         """다이얼 각도. 0~100"""
-        raise NotImplementedError
-
-    def read_button(self):
-        """버튼이 클릭되었는가. True/False"""
         raise NotImplementedError
 
     # --- 출력 ---
@@ -93,8 +93,9 @@ class ModiHardware(BaseHardware):
     """실제 MODI Plus 연결.
 
     모터 배치 (물리적으로 모터 모듈 3개)
-      motors[VENT_MOTOR_A_INDEX] = 환기창 모터A (반시계로 열림)
-      motors[VENT_MOTOR_B_INDEX] = 환기창 모터B (모터A와 반대 방향, 시계로 열림)
+      motors[VENT_MOTOR_A_INDEX] = 환기창 모터A
+      motors[VENT_MOTOR_B_INDEX] = 환기창 모터B (A와 거울 대칭으로 장착 - 같은 코드
+                                    각도를 줘야 실제로 마주보며 반대 방향으로 열린다)
       motors[SPRINKLER_MOTOR_INDEX] = 스프링클러 (급수 표현용, 실제로 물은 나오지 않음)
     """
 
@@ -102,7 +103,7 @@ class ModiHardware(BaseHardware):
         self.conn_type = conn_type
         self.network_uuid = network_uuid
         self.bundle = None
-        self.env = self.tof = self.dial = self.button = None
+        self.env = self.tof = self.dial = None
         self.led = self.display = self.speaker = None
         self.vent_motor_a = None
         self.vent_motor_b = None
@@ -122,9 +123,9 @@ class ModiHardware(BaseHardware):
         print("[HW] 연결된 모듈:", self.bundle.modules)
 
         # 필수 모듈 - 하나라도 없으면 진행할 수 없다
+        # [주의] Button은 쓰지 않는다 - 수동 조작은 앱으로만 한다 (물리 버튼 없음).
         required = {
             "env": self.bundle.envs,
-            "button": self.bundle.buttons,
             "led": self.bundle.leds,
             "display": self.bundle.displays,
             "speaker": self.bundle.speakers,
@@ -138,7 +139,6 @@ class ModiHardware(BaseHardware):
             )
 
         self.env = self.bundle.envs[0]
-        self.button = self.bundle.buttons[0]
         self.tof = self.bundle.tofs[0] if self.bundle.tofs else None
         self.led = self.bundle.leds[0]
         self.display = self.bundle.displays[0]
@@ -204,9 +204,6 @@ class ModiHardware(BaseHardware):
             return None
         return int(self.dial.turn)
 
-    def read_button(self):
-        return bool(self.button.clicked)
-
     # --- 출력 ---
     def set_led(self, rgb):
         self.led.rgb = rgb
@@ -221,10 +218,11 @@ class ModiHardware(BaseHardware):
         self.speaker.reset()
 
     def open_vent(self, speed=50):
-        # 블록코딩 테스트로 확인된 값: 모터A -250도(반시계) / 모터B +250도(시계).
-        # [주의] pymodi_plus의 .angle이 절대 목표각이라고 가정한다(대회장에서
-        # 실물로 다시 확인할 것 - 혹시 상대회전이면 이 값이 안 맞을 수 있다).
-        self.vent_motor_a.angle = -VENT_ROTATION_DEG, speed
+        # 실물 테스트(2026-08-01)로 확인: 모터A/B 둘 다 같은 부호로 줘야
+        # 실제로는 마주보고 반대 방향으로 열린다 (모터가 서로 거울 대칭으로
+        # 달려있어서). 처음엔 반대 부호로 가정했다가 모터A가 반대로 도는
+        # 걸 보고 고쳤다.
+        self.vent_motor_a.angle = VENT_ROTATION_DEG, speed
         self.vent_motor_b.angle = VENT_ROTATION_DEG, speed
 
     def close_vent(self, speed=50):
@@ -251,7 +249,6 @@ class MockHardware(BaseHardware):
         self._sprinkler = 0
         self._temp = 24.0
         self._humidity = 55.0
-        self._button_next = False
         self._led_on = False
         self._last = time.time()
 
@@ -293,16 +290,6 @@ class MockHardware(BaseHardware):
 
     def read_dial(self):
         return 0
-
-    def read_button(self):
-        if self._button_next:
-            self._button_next = False
-            return True
-        return False
-
-    def press_button(self):
-        """테스트용. 다음 read_button()이 True를 반환하게 한다."""
-        self._button_next = True
 
     def set_led(self, rgb):
         on = any(v > 0 for v in rgb)
