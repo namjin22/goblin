@@ -122,6 +122,8 @@ Flask 스레드  상태 읽기, 명령 큐에 넣기. 하드웨어 절대 금지
 | 날씨(비/폭염) 판단을 외부 API 없이 Env 센서로 추정 | 팀 결정 (인터넷 없이도 동작해야 함). 온도가 매우 높으면 폭염(자동 개방 유지), 습도가 `RAIN_HUMIDITY_THRESHOLD`(85%) 넘으면 비로 보고 자동 닫기. 오탐 가능성 있음 |
 | **물리 Button 모듈 제거, 수동 조작은 앱 전용** | 팀 결정 (2026-08-01). hwtest 결과 button이 인식 안 됐던 게 계기 - 원래도 케이블/전원 문제였을 수 있지만, 팀이 아예 물리 버튼 없이 앱으로만 조작하기로 확정. `hardware.py`의 `read_button()`/`ModiHardware.button` 전부 제거, `controller.tick()`의 버튼 폴링 단계도 삭제 |
 | Speaker에 온열질환 경고(34도 이상 3분) 추가 | 사용자 요청 - 농부 안전은 작물별 `vent_temp`(작물이 덥다고 느끼는 기준, 크롭마다 다름)와 별개로 고정 기준이어야 함. `HEAT_DANGER_TEMP=34`. 기존 alert 진입 삑(0.4초)과 스피커를 동시에 못 쓰므로 온열 경고가 우선한다 |
+| 환기창 열림/닫힘을 `vent_state.json`에 기억 + 앱에서 "실제 상태 맞추기"(`vent_mark_*`) | 환기창은 상대회전이라 실제 위치를 읽을 방법이 없다. 껐다 켜거나 재조립하면 "닫혀 있다"는 가정이 틀려 위치가 어긋난다(부스 운영의 가장 큰 위험). 파일로 이어받고, 이어받은 값은 `vent_assumed=True`(추정)로 표시해 웹의 운영자 패널이 사람의 확인을 받게 한다. 모의 실행은 파일을 만들지도 읽지도 않는다 |
+| 웹 UI는 폴링만 사용, 장치/서버 이상을 화면에 띄움 | 상시 연결(MJPEG 등)은 모바일 동시연결 한도를 점유해 대시보드가 멈춘 전력이 있다. 대신 서버 응답은 오는데 메인 루프가 멈춘 경우(`server_time - updated_at`)와 장치 통신 오류(`hw_error`)를 배너로 알려, 화면이 살아 있는 척하지 않게 한다 |
 
 ### 정직성 원칙
 
@@ -148,7 +150,9 @@ PT에서 한계를 **먼저** 밝힌다. 숨겼다가 질문받는 것보다 낫
 | `server.py` | Flask API (하드웨어 접근 금지) |
 | `main.py` | 메인 루프 |
 | `hwtest.py` | 실물 모듈 점검. `main.py` 전에 먼저 실행 |
-| `testapp.html` | 앱 참고 구현. `/`로 서빙됨 |
+| `web/` | **부스용 웹 UI** (Vite+React+Tailwind). `npm run build` 결과 `web/dist`를 Flask가 `/`로 서빙한다. `dist`는 부스 PC에 Node가 없어도 되게 커밋한다. 폴링만 쓴다 - 상시연결(MJPEG/SSE/WebSocket)은 모바일 동시연결 한도를 점유해 대시보드를 멈추게 한 전력이 있다 |
+| `BOOTH.md` / `start_booth.bat` | 부스 운영 가이드와 시작 스크립트(죽으면 자동 재시작 + Edge 전체화면). 연결 방법·점검 순서·문제 해결표는 BOOTH.md에 있다 |
+| `testapp.html` | 예전 참고 구현. `/legacy`로 서빙됨 (web/dist가 없을 때는 `/`에서도 뜬다) |
 
 ## 실행
 
@@ -157,6 +161,11 @@ python main.py --mock      # 하드웨어 없이 (개발용)
 python main.py --no-auto   # 자동 조치 끄고 수동만
 python main.py             # 실물
 python hwtest.py           # 모듈 점검
+python main.py --mock --mock-crop corn   # 가짜 비전이 인식할 작물 지정 (웹 UI 개발용)
+
+# 웹 UI 개발 (web/ 폴더). 파이썬 서버를 띄운 채로
+cd web && npm install && npm run dev      # http://localhost:5173 (/api를 5000으로 프록시)
+cd web && npm run build                   # web/dist 갱신 -> 파이썬 서버가 / 로 서빙
 ```
 
 ---

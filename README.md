@@ -161,7 +161,10 @@ python hwtest.py --motor    # 환기창 방향·각도 대화형 보정
 ├── server.py            Flask API
 ├── main.py              메인 루프
 ├── hwtest.py            실물 모듈 점검 도구
-├── testapp.html         웹 인터페이스
+├── web/                 부스용 웹 UI (Vite+React). npm run build → web/dist 를 서버가 서빙
+├── testapp.html         예전 웹 인터페이스 (/legacy)
+├── start_booth.bat      부스 시작 스크립트 (자동 재시작 + 전체화면)
+├── BOOTH.md             부스 운영 가이드 (연결·점검·체크리스트·문제 해결)
 ├── app/                 Flutter 모바일 앱
 └── crop_model.py        딥러닝 파이프라인
     train_crop_model.py
@@ -303,11 +306,24 @@ ToF를 쓰지 않으므로 6초마다 자동 촬영한다(`SCAN_INTERVAL`). 즉�
 { "command": "water" }
 ```
 
-가능한 값: `vent_open` `vent_close` `vent_toggle` `water` `scan` `light_toggle`
+가능한 값: `vent_open` `vent_close` `vent_toggle` `water` `scan` `light_toggle` `auto_on` `auto_off` `vent_mark_open` `vent_mark_closed`
 
+- `auto_on` / `auto_off`: 자동 조치 켜기/끄기
+- `vent_mark_open` / `vent_mark_closed`: **모터를 돌리지 않고** "창문이 지금 실제로 열려/닫혀 있다"고 알려준다 (재조립·재시작 뒤 어긋난 상태를 바로잡을 때)
+- `scan` `light_toggle` `auto_*` `vent_mark_*`는 모터가 도는 중에도 받는다
 - 성공 `200` → `{"ok": true, "queued": "water"}`
 - 동작 중 `409` → 에러가 아니라 안내 문구로 보여줄 것
 - 잘못된 명령 `400`
+
+`/api/state`에는 부스 웹 UI용 필드도 있다: `crop_key` `crop_probs`(작물별 확률) `reason`(판단 근거 한 줄) `display_text`(Display에 나가는 두 줄) `auto_mode` `vent_assumed`(창문 상태가 사람이 확인 안 된 추정값) `hw_error`(장치 통신 오류, 정상이면 null) `server_time` `thresholds`(현재 작물의 기준값).
+
+### GET /api/profiles
+
+모든 작물의 기준값 `{"items": [{"key", "name", "note", "thresholds": {...}}]}`.
+
+### GET /api/info
+
+`{"lan_url": "http://192.168.1.3:5000"}` — 폰 접속용 주소(QR에 쓴다). 못 찾으면 `null`.
 
 ### GET /api/history?limit=50
 
