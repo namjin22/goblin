@@ -1,5 +1,6 @@
 import { Drawer } from "./Overlay";
 import { Icon } from "./Icons";
+import { preflight } from "../lib/preflight";
 
 function Section({ title, children }) {
   return (
@@ -20,6 +21,44 @@ function Row({ label, value, warn }) {
 }
 
 /** 부스를 운영하는 사람용 패널. 관람객은 열 일이 없다. */
+const LEVEL = {
+  ok: { icon: "check", chip: "bg-leaf-100 text-leaf-700" },
+  warn: { icon: "info", chip: "bg-sun-100 text-sun-700" },
+  fail: { icon: "close", chip: "bg-berry-100 text-berry-700" },
+};
+
+/** 개장 전 점검 - BOOTH.md의 체크리스트를 현재 상태로 자동 판정한다 */
+function Checklist({ items }) {
+  const ready = items.filter((i) => i.level === "ok").length;
+  const allOk = ready === items.length;
+  return (
+    <Section title={`개장 전 점검 · ${ready}/${items.length}`}>
+      <div
+        className={`mb-2 rounded-2xl px-4 py-2.5 text-[14px] font-bold ${
+          allOk ? "bg-leaf-100 text-leaf-800" : "bg-sun-100 text-sun-700"
+        }`}
+      >
+        {allOk ? "모두 준비됐어요. 부스를 열어도 좋아요." : "확인할 것이 남아 있어요."}
+      </div>
+      <ul className="divide-y divide-line/70 rounded-2xl bg-paper px-4">
+        {items.map((i) => (
+          <li key={i.key} className="flex items-start gap-3 py-2.5">
+            <span
+              className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${LEVEL[i.level].chip}`}
+            >
+              <Icon name={LEVEL[i.level].icon} size={14} strokeWidth={2.4} />
+            </span>
+            <span className="min-w-0 text-[14px] leading-snug">
+              <b className="text-ink">{i.label}</b>
+              <span className="block text-[12.5px] text-ink-soft">{i.detail}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
 export function OperatorDrawer({ open, onClose, state, send, staleSec }) {
   const assumed = state?.vent_assumed;
 
@@ -29,6 +68,8 @@ export function OperatorDrawer({ open, onClose, state, send, staleSec }) {
         <p className="text-ink-soft">서버에서 상태를 받는 중이에요…</p>
       ) : (
         <>
+          <Checklist items={preflight(state, staleSec)} />
+
           <Section title="환기창 실제 상태 맞추기">
             <div
               className={`rounded-2xl px-4 py-3.5 ${

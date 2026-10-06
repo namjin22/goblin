@@ -14,6 +14,7 @@ import { PhoneModal } from "./components/PhoneModal";
 import { RecognitionToast } from "./components/RecognitionToast";
 import { Toast } from "./components/Toast";
 import { Icon } from "./components/Icons";
+import { preflight } from "./lib/preflight";
 
 function Loading({ online }) {
   return (
@@ -50,7 +51,7 @@ export default function App() {
         <Header
           online={online}
           mock={state?.mock}
-          needsAttention={!!state?.vent_assumed}
+          needsAttention={preflight(state, staleSec).some((i) => i.level !== "ok")}
           onShowLimits={() => setPanel("limits")}
           onShowPhone={() => setPanel("phone")}
           onShowOperator={() => setPanel("operator")}
@@ -71,10 +72,10 @@ export default function App() {
             </div>
 
             {/* 아랫줄: 그 결과 움직이는 장치 → 직접 조작 → 기록 */}
-            <div className="lg:col-span-12 xl:col-span-6">
+            <div className="lg:col-span-12 xl:col-span-5 2xl:col-span-6">
               <DevicesCard state={state} />
             </div>
-            <div className="lg:col-span-6 xl:col-span-3">
+            <div className="lg:col-span-6 xl:col-span-4 2xl:col-span-3">
               <ControlsCard state={state} send={send} />
             </div>
             <div className="lg:col-span-6 xl:col-span-3">

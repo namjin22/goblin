@@ -138,7 +138,7 @@ export function DevicesCard({ state }) {
   return (
     <Card title="장치 상태" icon="auto">
       <div className="flex h-full flex-col">
-      <div className="grid flex-1 grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid flex-1 grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-2 2xl:grid-cols-4">
         <Tile label="환기창" status={ventStatus} active={state.vent_open}>
           <WindowGraphic open={state.vent_open} />
         </Tile>
