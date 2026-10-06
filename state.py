@@ -16,7 +16,14 @@ import time
 from collections import deque
 
 # 앱이 보낼 수 있는 명령 목록. 여기 없는 명령은 거부한다.
-VALID_COMMANDS = {"vent_open", "vent_close", "vent_toggle", "water", "scan", "light_toggle"}
+VALID_COMMANDS = {"vent_open", "vent_close", "vent_toggle", "water", "scan", "light_toggle",
+                  "auto_on", "auto_off", "vent_mark_open", "vent_mark_closed"}
+
+# 액추에이터를 안 움직이는 명령. 모터가 도는 중(busy)에도 받아서 바로 처리한다.
+# (auto_on/off는 모터가 도는 동안 눌러도 버려지면 안 된다)
+# vent_mark_*는 모터를 돌리지 않고 "창문이 지금 실제로 열려/닫혀 있다"고 시스템에 알려주기만 한다.
+INSTANT_COMMANDS = {"scan", "light_toggle", "auto_on", "auto_off",
+                    "vent_mark_open", "vent_mark_closed"}
 
 # LED는 생장등으로만 쓴다. 상태색 표시는 앱이 담당한다.
 # light_toggle은 수동 개입("조작은 언제든 할 수 있다") — 자동 로직(update_grow_light)이
@@ -54,7 +61,16 @@ class Store:
             "message": "시작하는 중입니다",
             "short": "준비중",
             "profile_name": "확인 중",
+            "crop_probs": None,       # 분류기의 클래스별 확률 {"lettuce": 0.93, ...}. 웹 화면용
+            "reason": "",             # 지금 판단의 근거 한 줄 (웹 화면용)
+            "display_text": "",       # 실제 Display 모듈에 나가는 두 줄 ("작물\n상태")
+            "auto_mode": True,        # 자동 조치 on/off. 앱에서 바꿀 수 있다
             # 액추에이터
+            # [중요] 환기창은 상대회전이라 시스템은 실제 위치를 모르고 "열려 있다/닫혀 있다"를
+            # 믿고 있을 뿐이다. vent_assumed가 True면 아직 사람이 확인하지 않은 추정값이다
+            # (재조립/재시작 직후). 웹 화면이 "맞는지 확인해 주세요"를 띄운다.
+            "vent_assumed": True,
+            "hw_error": None,         # 메인 루프 tick이 실패했을 때의 마지막 오류 (정상이면 None)
             "vent_open": False,
             "sprinkler_on": False,
             "light_on": False,        # 생장등

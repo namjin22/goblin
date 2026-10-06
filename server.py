@@ -14,14 +14,48 @@
 """
 
 import os
+import socket
 import threading
 import time
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
-from controller import GROWTH_PHOTO_DIR
-from profiles import get_profile
-from state import VALID_COMMANDS
+from controller import (GROWTH_PHOTO_DIR, HEAT_DANGER_TEMP, LIGHT_HYSTERESIS,
+                        RAIN_HUMIDITY_THRESHOLD)
+from profiles import CROP_PROFILES, get_profile
+from state import INSTANT_COMMANDS, VALID_COMMANDS
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+WEB_DIST = os.path.join(BASE_DIR, "web", "dist")   # 새 웹 UI (npm run build 결과물)
+
+
+def lan_ip():
+    """같은 네트워크의 폰이 접속할 수 있는 이 노트북의 주소. 못 찾으면 None.
+
+    실제로 패킷을 보내지는 않는다(UDP connect는 경로만 고른다).
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+        return None if ip.startswith("127.") else ip
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
+def _thresholds(profile):
+    """웹 화면의 기준선 게이지에 쓰는 값. 판단 로직(controller.decide)과 같은 상수를 쓴다."""
+    return {
+        "vent_temp": profile["vent_temp"],
+        "vent_alert_temp": profile["vent_temp"] + 3,     # decide()의 alert 경계
+        "dry_limit": profile["dry_limit"],
+        "min_lux": profile["min_lux"],
+        "light_off_lux": profile["min_lux"] + LIGHT_HYSTERESIS,
+        "rain_humidity": RAIN_HUMIDITY_THRESHOLD,
+        "heat_danger_temp": HEAT_DANGER_TEMP,
+    }
 
 
 def _growth_info(snap):
@@ -58,7 +92,7 @@ def _growth_info(snap):
     }
 
 
-def create_app(store):
+def create_app(store, port=5000):
     app = Flask(__name__)
 
     # 한글을 \uXXXX 로 escape 하지 않고 그대로 내보낸다.
@@ -84,21 +118,37 @@ def create_app(store):
 
     @app.route("/")
     def index():
-        """테스트용 화면. 휴대폰 브라우저로 바로 열어볼 수 있다.
+        """부스용 새 웹 UI(web/dist). 빌드 전이면 예전 testapp.html로 대신한다."""
+        if os.path.exists(os.path.join(WEB_DIST, "index.html")):
+            return send_from_directory(WEB_DIST, "index.html")
+        return legacy()
 
-        앱이 완성되기 전까지 이걸로 전체 흐름을 확인한다.
-        앱 담당자에게는 참고 구현으로 넘기면 된다.
-        """
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            "testapp.html")
+    @app.route("/legacy")
+    def legacy():
+        """예전 테스트용 화면(testapp.html). 새 웹이 문제일 때의 대비책."""
+        path = os.path.join(BASE_DIR, "testapp.html")
         if not os.path.exists(path):
             return "testapp.html 이 없습니다", 404
         with open(path, "r", encoding="utf-8") as f:
             return Response(f.read(), mimetype="text/html")
 
+    @app.route("/assets/<path:filename>")
+    def web_assets(filename):
+        """Vite 빌드가 만든 JS/CSS/폰트 (web/dist/assets)."""
+        return send_from_directory(os.path.join(WEB_DIST, "assets"), filename)
+
     @app.route("/api/health")
     def health():
         return jsonify({"ok": True})
+
+    @app.route("/api/info")
+    def info():
+        """폰 접속용 주소(QR 코드에 쓴다). 노트북 IP는 서버만 알 수 있다."""
+        ip = lan_ip()
+        return jsonify({
+            "lan_url": "http://%s:%d" % (ip, port) if ip else None,
+            "port": port,
+        })
 
     @app.route("/camera/snapshot.jpg")
     def camera_snapshot():
@@ -125,7 +175,20 @@ def create_app(store):
         """
         snap = store.snapshot()
         growth = _growth_info(snap)
+        profile = get_profile(snap.get("crop_key"))
         return jsonify({
+            # --- 부스 웹 UI용 ---
+            "crop_key": snap.get("crop_key"),
+            "crop_probs": snap.get("crop_probs"),        # {"lettuce": 0.93, ...} 또는 null
+            "reason": snap.get("reason"),                # 판단 근거 한 줄
+            "display_text": snap.get("display_text"),    # Display 모듈에 나가는 두 줄
+            "auto_mode": snap.get("auto_mode"),
+            "vent_assumed": snap.get("vent_assumed"),    # True면 창문 상태가 사람이 확인 안 된 추정값
+            "hw_error": snap.get("hw_error"),            # 장치 통신 오류 (정상이면 null)
+            # 메인 루프가 멈췄는지(updated_at이 오래됨)를 브라우저 시계와 무관하게 판단하려고
+            "server_time": time.time(),
+            "thresholds": _thresholds(profile),
+            "has_camera_frame": store.get_camera_frame() is not None,
             "message": snap["message"],          # 큰 글씨 한 줄
             "short": snap.get("short"),          # Display에 나가는 짧은 단어
             "level": snap["level"],              # good / warn / alert -> 배경색
@@ -152,7 +215,7 @@ def create_app(store):
         """앱 [2] 직접 하기 화면용.
 
         요청 예: {"command": "water"}
-        가능한 값: vent_open, vent_close, water, scan
+        가능한 값: state.VALID_COMMANDS 참고
         """
         if request.method == "OPTIONS":
             return ("", 204)
@@ -167,7 +230,8 @@ def create_app(store):
                 "valid": sorted(VALID_COMMANDS),
             }), 400
 
-        if store.get("busy"):
+        # 모터를 안 쓰는 명령(자동 on/off 등)은 동작 중에도 받는다
+        if store.get("busy") and cmd not in INSTANT_COMMANDS:
             return jsonify({
                 "ok": False,
                 "error": "지금 다른 동작을 하고 있어요. 잠시 뒤에 눌러주세요",
@@ -175,6 +239,15 @@ def create_app(store):
 
         store.push_command(cmd, source="app")
         return jsonify({"ok": True, "queued": cmd})
+
+    @app.route("/api/profiles")
+    def get_profiles():
+        """모든 작물의 기준값. "같은 장치, 작물마다 다른 판단"을 나란히 보여주는 화면용."""
+        return jsonify({"items": [
+            {"key": key, "name": p["name"], "note": p.get("note"),
+             "thresholds": _thresholds(p)}
+            for key, p in CROP_PROFILES.items()
+        ]})
 
     @app.route("/api/history")
     def get_history():
@@ -209,7 +282,7 @@ def create_app(store):
 
 def start_server(store, host="0.0.0.0", port=5000):
     """Flask를 별도 스레드에서 띄운다. 메인 루프를 막지 않는다."""
-    app = create_app(store)
+    app = create_app(store, port=port)
 
     def run():
         # reloader를 끄지 않으면 스레드에서 문제가 생긴다.

@@ -66,6 +66,9 @@ class Vision:
         self._class_map = None
         self._preprocess = None
         self._model_tried = False
+        # 마지막 분류의 클래스별 확률 {"lettuce": 0.93, ...}. 웹 화면의 확률 막대용.
+        # 모델이 없거나 추론이 실패해 HSV 폴백으로 갔으면 None.
+        self.last_probs = None
         time.sleep(1)   # 카메라 노출 안정화
 
     # ------------------------------------------------------ 딥러닝 모델
@@ -177,6 +180,7 @@ class Vision:
             self._load_model()
 
         roi = _crop(frame, CROP_ROI)
+        self.last_probs = None   # 이번 스캔에서 모델이 못 돌았으면 이전 값이 남지 않게 비운다
 
         if self._model is not None:
             result = self._classify_crop_model(roi)
@@ -208,6 +212,8 @@ class Vision:
         except Exception as e:
             print("[VISION] 모델 추론 실패, HSV로 넘긴다:", e)
             return None
+
+        self.last_probs = {k: round(p, 3) for k, p in zip(self._class_map, probs.tolist())}
 
         # [진단용] 인식이 잘 안 될 때 어느 클래스를 얼마나 확신했는지 바로
         # 보려고 매 스캔마다 전체 확률을 찍는다. 문제 해결되면 지워도 된다.
@@ -250,21 +256,80 @@ class MockVision:
     """웹캠 없이 개발할 때 쓰는 가짜 비전.
 
     건조도가 서서히 오르고, 물을 주면 떨어진다.
+    cycle(초)을 주면 그 간격으로 작물이 바뀐다 (웹 UI에서 "작물이 바뀌는 순간"을
+    하드웨어 없이 보려고). 가짜 웹캠 화면에는 "MOCK CAMERA"를 박아서 실제 영상과
+    헷갈리지 않게 한다.
     """
 
-    def __init__(self, crop="lettuce"):
+    _ORDER = ["lettuce", "corn", "carrot", "background"]
+    # 브릭 색 (BGR)
+    _BRICK = {"lettuce": (80, 175, 90), "corn": (45, 200, 240), "carrot": (40, 125, 235)}
+
+    def __init__(self, crop="lettuce", cycle=0):
         self._crop = crop
+        self._cycle = cycle
+        self._t0 = time.time()
         self._dryness = 40.0
         self._last = time.time()
+        self.last_probs = None
+        try:
+            import cv2
+            import numpy
+            self.cv2 = cv2      # controller가 이게 있으면 미리보기 JPEG를 만든다
+            self._np = numpy
+        except ImportError:
+            pass                # cv2가 없으면 웹 화면은 "카메라 대기" 상태로 둔다
+
+    def _current(self):
+        """지금 보이는 작물. cycle이 있으면 시간에 따라 돌아가며 바뀐다."""
+        if not self._cycle:
+            return self._crop
+        start = self._ORDER.index(self._crop) if self._crop in self._ORDER else 0
+        step = int((time.time() - self._t0) // self._cycle)
+        return self._ORDER[(start + step) % len(self._ORDER)]
 
     def capture(self):
-        return "MOCK_FRAME"
+        if not hasattr(self, "cv2"):
+            return "MOCK_FRAME"
+        cv2, np = self.cv2, self._np
+        h, w = 480, 640
+        frame = np.full((h, w, 3), (170, 190, 195), np.uint8)               # 책상
+        frame = np.clip(frame + np.random.randint(-6, 7, frame.shape), 0, 255).astype(np.uint8)
+        color = self._BRICK.get(self._current())
+        if color:
+            x1, y1, x2, y2 = int(w * 0.36), int(h * 0.36), int(w * 0.64), int(h * 0.68)
+            cv2.rectangle(frame, (x1 + 6, y1 + 8), (x2 + 6, y2 + 8), (120, 135, 140), -1)   # 그림자
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, -1)
+            dark = tuple(int(c * 0.7) for c in color)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), dark, 3)
+            for i in range(4):                                              # 레고 돌기
+                for j in range(2):
+                    cx = x1 + int((i + 0.5) * (x2 - x1) / 4)
+                    cy = y1 + int((j + 0.5) * (y2 - y1) / 2)
+                    cv2.circle(frame, (cx, cy), 11, tuple(min(255, int(c * 1.15)) for c in color), -1)
+                    cv2.circle(frame, (cx, cy), 11, dark, 2)
+        cv2.putText(frame, "MOCK CAMERA", (14, h - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (90, 100, 100), 2, cv2.LINE_AA)
+        return frame
 
     def release(self):
         pass
 
+    def set_crop(self, crop):
+        """Mock에서 작물을 바꿔 보는 용도 (--mock으로 웹 UI를 개발할 때)."""
+        self._crop = crop
+        self._t0 = time.time()
+
     def classify_crop(self, frame):
-        return self._crop
+        # 웹 UI의 확률 막대를 개발할 수 있게 그럴듯한 확률을 만들어 준다.
+        current = self._current()
+        rest = [k for k in self._ORDER if k != current]
+        noise = [random.random() for _ in rest]
+        scale = 0.08 / sum(noise)
+        probs = {current: round(0.92 + random.random() * 0.06, 3)}
+        probs.update({k: round(n * scale, 3) for k, n in zip(rest, noise)})
+        self.last_probs = probs
+        return current
 
     def soil_dryness(self, frame):
         now = time.time()
@@ -285,9 +350,9 @@ class MockVision:
         return False
 
 
-def build_vision(mock=False, cam_index=0, crop="lettuce"):
+def build_vision(mock=False, cam_index=0, crop="lettuce", cycle=0):
     if mock:
-        return MockVision(crop=crop)
+        return MockVision(crop=crop, cycle=cycle)
     try:
         return Vision(cam_index=cam_index)
     except Exception as e:

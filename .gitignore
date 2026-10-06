@@ -13,8 +13,14 @@ calib.json
 # 실행 중 생기는 것들
 *.log
 log.csv
+log_mock.csv
 run.log
 growth_photos/
+# 이 기기의 환기창이 마지막으로 열렸는지 닫혔는지 (기기마다 다름)
+vent_state.json
+
+# 웹 UI: 의존성은 제외, 빌드 결과(web/dist)는 커밋한다 - 부스 PC에 Node가 없어도 돌아가게
+web/node_modules/
 
 # Claude Code 개인 설정 (사람마다 다름)
 .claude/settings.local.json

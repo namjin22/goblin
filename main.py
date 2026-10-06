@@ -25,10 +25,11 @@ from controller import Controller
 from hardware import build_hardware
 from profiles import CROP_PROFILES
 from server import start_server
-from state import Store
+from state import LOG_PATH, Store
 from vision import build_vision
 
 LOOP_INTERVAL = 0.3      # 초. 너무 짧으면 모듈 통신이 밀린다.
+MOCK_LOG_PATH = "log_mock.csv"
 
 
 def _verify_vent_direction(hw):
@@ -75,6 +76,11 @@ def parse_args():
     p.add_argument("--ble", metavar="UUID", default=None,
                    help="BLE 무선 연결 (network uuid)")
     p.add_argument("--cam", type=int, default=0, help="웹캠 인덱스")
+    p.add_argument("--mock-crop", choices=list(CROP_PROFILES.keys()), default="lettuce",
+                   help="--mock일 때 가짜 비전이 인식할 작물 (웹 UI 개발용)")
+    p.add_argument("--mock-cycle", type=float, default=0, metavar="SEC",
+                   help="--mock일 때 이 간격(초)마다 작물이 상추→옥수수→당근→없음 순으로 "
+                        "바뀐다. 하드웨어 없이 '작물이 바뀌는 순간'을 웹에서 볼 때 쓴다")
     p.add_argument("--port", type=int, default=5000, help="API 포트")
     p.add_argument("--no-auto", action="store_true",
                    help="자동 조치를 끄고 수동 조작만 받는다")
@@ -122,8 +128,9 @@ def main():
 
     mock_hw = args.mock or args.mock_hw
 
-    store = Store()
-    store.update(mock=mock_hw)
+    # [중요] 모의 실행의 가짜 기록이 실물 실행의 "최근 기록"에 섞이지 않게 파일을 따로 쓴다.
+    store = Store(log_path=MOCK_LOG_PATH if mock_hw else LOG_PATH)
+    store.update(mock=mock_hw, auto_mode=not args.no_auto)
 
     # [중요] state.py는 시작할 때 vent_open=False(닫힘)로 가정한다.
     # 환기창은 상대회전으로 움직이므로(hardware.py 참고), 이 가정이 실제
@@ -150,7 +157,8 @@ def main():
         _verify_vent_direction(hw)
 
     # 2) 비전 준비 (--mock-hw만 줬으면 웹캠은 실물을 쓴다. 실패 시 자동으로 Mock)
-    vision = build_vision(mock=args.mock, cam_index=args.cam)
+    vision = build_vision(mock=args.mock, cam_index=args.cam, crop=args.mock_crop,
+                          cycle=args.mock_cycle)
 
     # 3) API 서버 시작
     start_server(store, port=args.port)
@@ -190,10 +198,17 @@ def main():
 
             try:
                 ctrl.tick(auto_mode=not args.no_auto)
+                if store.get("hw_error"):
+                    store.update(hw_error=None)
+                    store.add_history("hw_ok", "장치 통신이 다시 정상이 되었습니다")
             except Exception as e:
                 # 한 틱이 실패해도 전체가 죽으면 안 된다.
                 # 시연 중 모듈 하나가 튀어도 계속 돌아가야 한다.
                 print("[경고] tick 실패:", e)
+                # 웹 화면이 "장치 통신 문제"를 바로 보여줄 수 있게 남긴다
+                if not store.get("hw_error"):
+                    store.add_history("hw_error", "장치 통신에 문제가 생겼습니다")
+                store.update(hw_error=str(e)[:160] or e.__class__.__name__)
                 time.sleep(1)
 
             # 1초에 한 번만 콘솔에 출력

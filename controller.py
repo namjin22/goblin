@@ -17,10 +17,29 @@
   * ToF, Dial, IMU, Joystick, Button 미사용 - 물리 버튼 없이 수동 조작은 앱으로만 한다
 """
 
+import json
 import os
 import time
 
 from profiles import get_profile
+from state import INSTANT_COMMANDS
+
+def josa(word, with_batchim, without_batchim):
+    """마지막 글자 받침 유무로 조사를 고른다. josa("당근", "이", "가") -> "당근이".
+
+    작물 이름이 늘거나 바뀌어도 "당근가"/"상추을(를)" 같은 문장이 안 나가게 한다.
+    """
+    code = ord(word[-1]) - 0xAC00
+    has_batchim = 0 <= code < 11172 and code % 28 != 0
+    return word + (with_batchim if has_batchim else without_batchim)
+
+
+# 환기창이 열려 있는지 닫혀 있는지를 재시작해도 기억해 두는 파일.
+# [중요] 환기창은 상대회전이라 실제 위치를 읽을 방법이 없다. 프로그램을 껐다 켰는데
+# 창문이 열려 있었다면, "닫혀 있다"고 가정한 채 열기를 시도해 위치가 어긋난다.
+# 그래서 마지막 상태를 파일에 남겨 이어받는다. (사람이 손으로 창문을 움직였다면
+# 틀릴 수 있으므로, 웹 화면의 "창문 상태 맞추기"로 바로잡을 수 있다.)
+VENT_STATE_PATH = "vent_state.json"
 
 VENT_DURATION = 2.5        # 환기창 여닫는 데 걸리는 시간(초)
 SPRINKLER_DURATION = 4.0   # 스프링클러 회전 시간(초)
@@ -148,6 +167,29 @@ class Controller:
 
         self._vent_manual_at = 0.0     # 사람이 마지막으로 앱에서 환기창을 조작한 시각
 
+        # 모의 실행은 가짜 상태를 파일에 남기면 실물 실행 때 오해하므로 이어받지 않는다.
+        if not self.store.get("mock"):
+            saved = self._load_vent_state()
+            if saved is not None:
+                self.store.update(vent_open=saved)
+
+    # ------------------------------------------------------ 환기창 상태 기억
+    def _load_vent_state(self):
+        try:
+            with open(VENT_STATE_PATH, "r", encoding="utf-8") as f:
+                return bool(json.load(f)["vent_open"])
+        except (OSError, ValueError, KeyError):
+            return None
+
+    def _save_vent_state(self):
+        if self.store.get("mock"):
+            return
+        try:
+            with open(VENT_STATE_PATH, "w", encoding="utf-8") as f:
+                json.dump({"vent_open": bool(self.store.get("vent_open"))}, f)
+        except OSError as e:
+            print("[CTRL] 환기창 상태 저장 실패(무시):", e)
+
     # ------------------------------------------------------ 바쁨 상태
     @property
     def busy(self):
@@ -179,6 +221,7 @@ class Controller:
             return False
         self.hw.open_vent()
         self.store.update(vent_open=True)
+        self._save_vent_state()
         self.store.add_history("vent_open", "창문을 열었습니다")
         self._start_action("vent_open", VENT_DURATION)
         return True
@@ -189,6 +232,7 @@ class Controller:
             return False
         self.hw.close_vent()
         self.store.update(vent_open=False)
+        self._save_vent_state()
         self.store.add_history("vent_close", "창문을 닫았습니다")
         self._start_action("vent_close", VENT_DURATION)
         return True
@@ -293,6 +337,18 @@ class Controller:
         if ok:
             self.store.set_camera_frame(buf.tobytes())
 
+    def _publish_preview(self, frame):
+        """이미 찍은 프레임을 JPEG로 만들어 웹 미리보기에 올린다. 추가 캡처 없음."""
+        cv2 = getattr(self.vision, "cv2", None)
+        if cv2 is None:      # MockVision은 진짜 프레임이 없다
+            return
+        try:
+            ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            if ok:
+                self.store.set_camera_frame(buf.tobytes())
+        except Exception as e:
+            print("[CTRL] 미리보기 인코딩 실패(무시):", e)
+
     # ------------------------------------------------------ 비전 스캔
     def update_scan(self):
         """일정 주기마다 작물을 촬영해서 인식한다.
@@ -312,9 +368,17 @@ class Controller:
         if frame is None:
             return
 
+        # 분류하려고 이미 찍은 프레임을 웹 미리보기로도 쓴다. 미리보기 전용으로
+        # 웹캠을 따로 부르면 메인 루프가 멈춘 적이 있어서(camera_preview 참고),
+        # 추가 캡처 없이 6초 주기로 갱신하는 가장 안전한 방법이다.
+        self._publish_preview(frame)
+
         crop_key = self.force_crop if self.force_crop else self.vision.classify_crop(frame)
 
-        updates = {}
+        updates = {
+            # force_crop이면 화면의 작물은 강제값이라 모델 확률을 보여주면 거짓이 된다
+            "crop_probs": None if self.force_crop else getattr(self.vision, "last_probs", None),
+        }
         crop_started_at = self.store.get("crop_started_at")
         if crop_key == "background":
             # 모델이 확신을 갖고 "작물 없음"이라고 판단했다. 마지막으로
@@ -331,7 +395,7 @@ class Controller:
             # 작물이 바뀐 경우에만 기록을 남기고, 성장 일수 기준(첫 인식 시각)을 새로 잡는다.
             if crop_key != self.store.get("crop_key"):
                 self.store.add_history(
-                    "scan", "%s을(를) 확인했습니다" % profile["name"])
+                    "scan", "%s 확인했습니다" % josa(profile["name"], "을", "를"))
                 crop_started_at = time.time()
                 updates["crop_started_at"] = crop_started_at
                 self._last_growth_week.pop(crop_key, None)
@@ -365,8 +429,8 @@ class Controller:
     def decide(self, snap):
         """센서값과 프로파일로 상태를 정한다.
 
-        반환: (level, 긴 문장, 짧은 단어, 자동조치)
-              긴 문장 -> 앱 / 짧은 단어 -> Display
+        반환: (level, 긴 문장, 짧은 단어, 자동조치, 판단 근거)
+              긴 문장 -> 앱 / 짧은 단어 -> Display / 판단 근거 -> 웹 화면의 "왜?" 한 줄
 
         우선순위: 폭염(온열질환 예방, 열기) > 비 감지(닫기) > 건조(급수) > 정상.
         폭염이 비 감지보다 우선인 이유: 사람 안전(온열질환)이 젖음 방지보다
@@ -377,27 +441,36 @@ class Controller:
         humidity = snap.get("humidity")
         dry = snap.get("dryness")
         crop = profile["name"]
+        vent_temp = profile["vent_temp"]
 
         # 조도는 생장등이 알아서 처리하므로 메시지로 띄우지 않는다.
-        if temp is not None and temp > profile["vent_temp"] + 3:
-            return "alert", "너무 덥습니다. 창문을 열까요?", "더워요!", "vent_open"
+        if temp is not None and temp > vent_temp + 3:
+            return ("alert", "너무 덥습니다. 창문을 열까요?", "더워요!", "vent_open",
+                    "지금 %.1f°C — %s 기준(%d°C)을 3°C 넘게 초과" % (temp, crop, vent_temp))
 
-        if temp is not None and temp > profile["vent_temp"]:
-            return "warn", "조금 덥습니다", "조금 더움", "vent_open"
+        if temp is not None and temp > vent_temp:
+            return ("warn", "조금 덥습니다", "조금 더움", "vent_open",
+                    "지금 %.1f°C — %s 기준(%d°C)보다 높음" % (temp, crop, vent_temp))
 
         if humidity is not None and humidity > RAIN_HUMIDITY_THRESHOLD:
-            return "warn", "비가 오는 것 같아요. 창문을 닫을까요?", "비 옴", "vent_close"
+            return ("warn", "비가 오는 것 같아요. 창문을 닫을까요?", "비 옴", "vent_close",
+                    "습도 %.0f%% — 비 기준(%d%%) 초과" % (humidity, RAIN_HUMIDITY_THRESHOLD))
 
         if dry is not None and dry > profile["dry_limit"]:
-            return "alert", "흙이 말랐어요. 물을 줄까요?", "물 필요", "water"
+            return ("alert", "흙이 말랐어요. 물을 줄까요?", "물 필요", "water",
+                    "건조도 %.0f — %s 기준(%d) 초과" % (dry, crop, profile["dry_limit"]))
 
         # 작물이 아직 인식 안 됐으면(DEFAULT_PROFILE, name="확인 중") "확인
         # 중가 잘 자라고 있어요" 같은 말이 안 되는 문장이 나간다 - 정직하게
         # "아직 안 보인다"고 말할 것.
         if snap.get("crop_key") is None:
-            return "good", "아직 작물이 안 보여요", "대기 중", None
+            return "good", "아직 작물이 안 보여요", "대기 중", None, "작물을 인식하는 중이라 기본 기준을 쓰는 중"
 
-        return "good", "%s가 잘 자라고 있어요" % crop, "좋아요", None
+        if temp is not None:
+            reason = "지금 %.1f°C — %s 기준(%d°C) 이내" % (temp, crop, vent_temp)
+        else:
+            reason = "센서값을 읽는 중"
+        return "good", "%s 잘 자라고 있어요" % josa(crop, "이", "가"), "좋아요", None, reason
 
     # ------------------------------------------------------ 출력
     def render_display(self, crop_name, short):
@@ -418,6 +491,7 @@ class Controller:
             return
         self._last_display = text
         self.hw.show_text(text)
+        self.store.update(display_text=text)   # 웹 화면이 같은 두 줄을 그대로 보여준다
 
     def update_heat_alarm(self, temp):
         """온도가 HEAT_DANGER_TEMP 이상이면 3분간 경고음을 울린다.
@@ -501,6 +575,21 @@ class Controller:
         if cmd == "light_toggle":
             self._set_light(not self._light_on)
             return True
+        if cmd in ("vent_mark_open", "vent_mark_closed"):
+            # 모터는 돌리지 않는다. 실제 창문 위치를 사람이 보고 시스템의 믿음을 바로잡는다.
+            is_open = cmd == "vent_mark_open"
+            self.store.update(vent_open=is_open, vent_assumed=False)
+            self._save_vent_state()
+            self.store.add_history(
+                "vent_sync", "창문 상태를 '%s'로 맞췄습니다" % ("열림" if is_open else "닫힘"))
+            return True
+        if cmd in ("auto_on", "auto_off"):
+            on = cmd == "auto_on"
+            if self.store.get("auto_mode") != on:
+                self.store.update(auto_mode=on)
+                self.store.add_history(
+                    "auto", "자동 조치를 켰습니다" if on else "자동 조치를 껐습니다")
+            return True
         return False
 
     # ------------------------------------------------------ 메인 틱
@@ -525,8 +614,8 @@ class Controller:
         # 3) 판단
         snap = self.store.snapshot()
         profile = get_profile(snap.get("crop_key"))
-        level, message, short, auto_action = self.decide(snap)
-        self.store.update(level=level, message=message, short=short)
+        level, message, short, auto_action, reason = self.decide(snap)
+        self.store.update(level=level, message=message, short=short, reason=reason)
 
         # 4) 출력
         self.update_grow_light(env["illuminance"], profile)
@@ -536,7 +625,7 @@ class Controller:
 
         # 5) 앱에서 온 명령 (물리 버튼 없음 - 수동 조작은 앱으로만 한다)
         pending = self.store.pop_command()
-        if pending and not self.busy:
+        if pending and (not self.busy or pending["cmd"] in INSTANT_COMMANDS):
             self.handle_command(pending["cmd"])
             return
 
@@ -549,6 +638,9 @@ class Controller:
         #    자동 조치가 그걸 곧바로 뒤집지 않는다 - 안 그러면 "닫아도
         #    바로 다시 열리는" 것처럼 보인다 (실제로 겪은 문제).
         vent_manual_hold = time.time() - self._vent_manual_at < VENT_MANUAL_HOLD
+        # 자동 조치 on/off는 앱에서 바꿀 수 있어서 Store가 진실이다.
+        # (main.py의 --no-auto는 시작할 때 Store에 초기값으로 넣는다)
+        auto_mode = self.store.get("auto_mode", auto_mode)
         if auto_mode and auto_action and not self.busy:
             if auto_action == "vent_open" and not snap.get("vent_open") and not vent_manual_hold:
                 self.open_vent()
