@@ -1,0 +1,177 @@
+@import "tailwindcss";
+
+/* 폰트는 외부 CDN 없이 번들에 넣는다 - 부스 네트워크가 불안정해도 화면이 안 깨지게 */
+@font-face {
+  font-family: "Pretendard Variable";
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url("pretendard/dist/web/variable/woff2/PretendardVariable.woff2") format("woff2-variations");
+}
+
+@theme {
+  --font-sans: "Pretendard Variable", Pretendard, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* 잎 */
+  --color-leaf-50: #f1f7ec;
+  --color-leaf-100: #e0eed4;
+  --color-leaf-200: #c3dfaa;
+  --color-leaf-300: #9bc97a;
+  --color-leaf-400: #74b04f;
+  --color-leaf-500: #559336;
+  --color-leaf-600: #41742a;
+  --color-leaf-700: #335b24;
+  --color-leaf-800: #2a4a20;
+  --color-leaf-900: #1d3317;
+
+  /* 종이/흙 */
+  --color-paper: #f6f1e7;
+  --color-card: #fffdf8;
+  --color-line: #e6dcc8;
+  --color-soil-500: #8a6a49;
+  --color-soil-700: #5a4330;
+  --color-ink: #24301f;
+  --color-ink-soft: #66705f;
+
+  /* 상태 */
+  --color-sun-100: #fdf0c9;
+  --color-sun-500: #e7a417;
+  --color-sun-700: #9a6a04;
+  --color-berry-100: #fde0d9;
+  --color-berry-500: #d9482e;
+  --color-berry-700: #962a17;
+  --color-sky-100: #dcecf6;
+  --color-sky-500: #3c8fc4;
+  --color-sky-700: #1f5f8a;
+
+  --shadow-card: 0 1px 0 rgba(90, 67, 48, 0.06), 0 10px 30px -12px rgba(90, 67, 48, 0.18);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.01em;
+}
+
+button {
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* 키보드로 다닐 때만 보이는 포커스 링 (마우스/터치에는 안 나온다) */
+:focus-visible {
+  outline: 3px solid var(--color-leaf-400);
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+/* 서랍/모달 자체는 열릴 때 프로그램이 포커스를 옮겨줄 뿐이라 링이 필요 없다 */
+[tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 99px;
+}
+
+@keyframes drop {
+  0% {
+    transform: translateY(-4px);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(34px);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* "AI가 보고 있다"는 느낌을 주는 느린 스캔 라인 */
+@keyframes scan-sweep {
+  0% {
+    top: 0%;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes pop-in {
+  0% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes flash-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(116, 176, 79, 0.65);
+  }
+  100% {
+    box-shadow: 0 0 0 16px rgba(116, 176, 79, 0);
+  }
+}
+
+/* 움직임을 줄이도록 설정한 사람(과 접근성 모드)에게는 CSS 애니메이션도 끈다 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
