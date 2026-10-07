@@ -159,6 +159,12 @@ export function ControlsCard({ state, send }) {
   };
 
   const busy = state.busy || !!pendingAction;
+  // 환기창은 모터 역할/방향이 확인되기 전에는 서버가 거부한다. 눌러서 헛수고하지 않게 미리 알려준다.
+  const ventBlock = !state.vent_roles_ok
+    ? "모터 역할을 먼저 정해 주세요 (운영자)"
+    : !state.vent_verified
+    ? "방향 확인이 필요해요 (운영자)"
+    : null;
   const shownAction = state.busy ? state.busy_action : pendingAction;
 
   return (
@@ -170,8 +176,8 @@ export function ControlsCard({ state, send }) {
           icon="window"
           tone="leaf"
           label={state.vent_open ? "창문 닫기" : "창문 열기"}
-          sub={state.vent_open ? "지금 열려 있어요" : "지금 닫혀 있어요"}
-          disabled={busy}
+          sub={ventBlock || (state.vent_open ? "지금 열려 있어요" : "지금 닫혀 있어요")}
+          disabled={busy || !!ventBlock}
           onClick={() =>
             state.vent_open
               ? runMotor("vent_close", "vent_close", "창문을 닫을게요")
@@ -182,8 +188,8 @@ export function ControlsCard({ state, send }) {
           icon="drop"
           tone="sky"
           label="물 주기"
-          sub="스프링클러를 돌려요"
-          disabled={busy}
+          sub={state.sprinkler_ready ? "스프링클러를 돌려요" : "스프링클러 모터가 없어요"}
+          disabled={busy || !state.sprinkler_ready}
           onClick={() => runMotor("water", "water", "물을 줄게요")}
         />
         <ActionButton

@@ -45,6 +45,45 @@ def lan_ip():
         s.close()
 
 
+def _validate_args(cmd, args, snap):
+    """인자가 있는 명령의 값을 검증한다. 문제가 없으면 None, 있으면 사람이 읽을 오류 문구.
+
+    웹 화면 말고도 같은 네트워크의 누구나 이 API를 부를 수 있으므로, 모터를 돌리는
+    인자는 반드시 서버에서 다시 확인한다 (알려진 모터 ID만, 각도는 작게).
+    """
+    needs_args = {"jog", "set_roles", "flip_sign"}
+    if cmd not in needs_args:
+        return None if args is None else "이 명령은 인자를 받지 않아요"
+    if not isinstance(args, dict):
+        return "인자가 필요해요"
+
+    hw = snap.get("hw") or {}
+    ids = {m["id"] for m in hw.get("motors", [])}
+
+    def is_id(v):
+        return isinstance(v, int) and not isinstance(v, bool) and v in ids
+
+    if cmd == "jog":
+        delta = args.get("delta")
+        if not is_id(args.get("motor_id")):
+            return "연결되지 않은 모터예요"
+        if not (isinstance(delta, int) and not isinstance(delta, bool) and 0 < abs(delta) <= 30):
+            return "각도는 1~30도 사이여야 해요"
+    elif cmd == "set_roles":
+        a, b, s = args.get("vent_a"), args.get("vent_b"), args.get("sprinkler")
+        if not (is_id(a) and is_id(b)):
+            return "환기창 모터 A와 B를 모두 골라야 해요"
+        if s is not None and not is_id(s):
+            return "스프링클러 모터가 올바르지 않아요"
+        chosen = [x for x in (a, b, s) if x is not None]
+        if len(set(chosen)) != len(chosen):
+            return "같은 모터를 두 역할에 쓸 수 없어요"
+    elif cmd == "flip_sign":
+        if args.get("which") not in ("a", "b"):
+            return "a 또는 b여야 해요"
+    return None
+
+
 def _thresholds(profile):
     """웹 화면의 기준선 게이지에 쓰는 값. 판단 로직(controller.decide)과 같은 상수를 쓴다."""
     return {
@@ -183,6 +222,12 @@ def create_app(store, port=5000):
             "reason": snap.get("reason"),                # 판단 근거 한 줄
             "display_text": snap.get("display_text"),    # Display 모듈에 나가는 두 줄
             "auto_mode": snap.get("auto_mode"),
+            "sound_on": snap.get("sound_on"),            # 노트북에서 소리가 나는지
+            "hw": snap.get("hw"),                        # 모터 목록/역할/방향/ready (장치 점검 화면용)
+            "vent_ready": (snap.get("hw") or {}).get("vent_ready", True),
+            "vent_roles_ok": (snap.get("hw") or {}).get("vent_roles_ok", True),
+            "vent_verified": (snap.get("hw") or {}).get("vent_verified", True),
+            "sprinkler_ready": (snap.get("hw") or {}).get("sprinkler_ready", True),
             "vent_assumed": snap.get("vent_assumed"),    # True면 창문 상태가 사람이 확인 안 된 추정값
             "hw_error": snap.get("hw_error"),            # 장치 통신 오류 (정상이면 null)
             # 메인 루프가 멈췄는지(updated_at이 오래됨)를 브라우저 시계와 무관하게 판단하려고
@@ -222,6 +267,7 @@ def create_app(store, port=5000):
 
         data = request.get_json(silent=True) or {}
         cmd = data.get("command")
+        args = data.get("args")
 
         if cmd not in VALID_COMMANDS:
             return jsonify({
@@ -230,6 +276,10 @@ def create_app(store, port=5000):
                 "valid": sorted(VALID_COMMANDS),
             }), 400
 
+        error = _validate_args(cmd, args, store.snapshot())
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
+
         # 모터를 안 쓰는 명령(자동 on/off 등)은 동작 중에도 받는다
         if store.get("busy") and cmd not in INSTANT_COMMANDS:
             return jsonify({
@@ -237,7 +287,7 @@ def create_app(store, port=5000):
                 "error": "지금 다른 동작을 하고 있어요. 잠시 뒤에 눌러주세요",
             }), 409
 
-        store.push_command(cmd, source="app")
+        store.push_command(cmd, source="app", args=args)
         return jsonify({"ok": True, "queued": cmd})
 
     @app.route("/api/profiles")

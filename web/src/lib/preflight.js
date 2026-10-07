@@ -36,6 +36,26 @@ export function preflight(state, staleSec) {
       : { key: "crop", level: "warn", label: "작물 인식", detail: "인식된 작물이 없어요. 브릭을 올려 보세요" }
   );
 
+  if (!state.vent_roles_ok) {
+    items.push({
+      key: "ventroles", level: "fail", label: "환기창 모터 역할",
+      detail: "정해지지 않았어요. 운영자 > 장치 점검 4번에서 정해 주세요 (그전엔 환기창이 안 움직여요)",
+    });
+  } else if (!state.vent_verified) {
+    items.push({
+      key: "ventroles", level: "warn", label: "환기창 방향",
+      detail: "아직 확인하지 않았어요. 장치 점검 5번에서 확인해 주세요 (그전엔 환기창이 안 움직여요)",
+    });
+  } else {
+    items.push({ key: "ventroles", level: "ok", label: "환기창 모터/방향", detail: "확인됨" });
+  }
+
+  items.push(
+    state.sprinkler_ready
+      ? { key: "sprinkler", level: "ok", label: "스프링클러 모터", detail: "연결됨" }
+      : { key: "sprinkler", level: "warn", label: "스프링클러 모터", detail: "없어요. 물 주기는 동작하지 않아요" }
+  );
+
   items.push(
     state.vent_assumed
       ? { key: "vent", level: "warn", label: "환기창 상태", detail: "실제 창문과 맞는지 확인이 필요해요" }
@@ -52,6 +72,12 @@ export function preflight(state, staleSec) {
           detail: `${heat}°C로 낮아요. 촬영용 임시값이면 ${HEAT_DEFAULT}°C로 되돌리세요`,
         }
       : { key: "heat", level: "ok", label: "온열질환 경고 기준", detail: `${heat}°C` }
+  );
+
+  items.push(
+    state.sound_on
+      ? { key: "sound", level: "ok", label: "소리 (노트북)", detail: "켜져 있어요. 운영자에서 한 번 들어 보세요" }
+      : { key: "sound", level: "warn", label: "소리 (노트북)", detail: "꺼져 있어요 (--mute 또는 모의 실행)" }
   );
 
   items.push(

@@ -21,6 +21,7 @@ import sys
 import time
 
 import hardware as hardware_module
+from audio import build_audio
 from controller import Controller
 from hardware import build_hardware
 from profiles import CROP_PROFILES
@@ -76,6 +77,10 @@ def parse_args():
     p.add_argument("--ble", metavar="UUID", default=None,
                    help="BLE 무선 연결 (network uuid)")
     p.add_argument("--cam", type=int, default=0, help="웹캠 인덱스")
+    p.add_argument("--mute", action="store_true",
+                   help="노트북에서 나는 소리(경고음/인식음)를 끈다")
+    p.add_argument("--sound", action="store_true",
+                   help="모의 실행(--mock/--mock-hw)에서도 소리를 낸다 (기본은 무음)")
     p.add_argument("--mock-crop", choices=list(CROP_PROFILES.keys()), default="lettuce",
                    help="--mock일 때 가짜 비전이 인식할 작물 (웹 UI 개발용)")
     p.add_argument("--mock-cycle", type=float, default=0, metavar="SEC",
@@ -164,8 +169,10 @@ def main():
     start_server(store, port=args.port)
 
     # 4) 제어기
+    # 소리는 MODI Speaker가 아니라 노트북에서 낸다. 모의 실행은 개발 중 시끄러우니 기본 무음.
+    audio = build_audio(mute=args.mute or (mock_hw and not args.sound))
     ctrl = Controller(hw, store, vision=vision, camera_preview=args.camera_preview,
-                      force_crop=args.force_crop)
+                      force_crop=args.force_crop, audio=audio)
     if args.force_crop:
         print("[주의] --force-crop %s : 카메라 인식 무시하고 항상 이 작물로 표시함 (촬영용)" % args.force_crop)
 
@@ -235,6 +242,7 @@ def main():
             hw.close()
         except Exception:
             pass
+        audio.close()
         if hasattr(vision, "release"):
             vision.release()
 

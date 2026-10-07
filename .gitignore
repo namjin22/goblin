@@ -31,3 +31,6 @@ web/node_modules/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# 장치별 설정(모터 역할/방향)
+hw_config.json

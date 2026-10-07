@@ -91,12 +91,12 @@ export function useGoblin() {
 
   /** 명령을 서버로 보낸다. 서버가 큐에 넣고, 메인 루프가 하드웨어를 움직인다. */
   const send = useCallback(
-    async (command, okText) => {
+    async (command, okText, args) => {
       try {
         const res = await fetch("/api/command", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command }),
+          body: JSON.stringify({ command, args }),
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {

@@ -11,10 +11,10 @@
   Env       온도 -> 환기 판단 / 조도 -> 생장등 판단 / 습도 -> 건조도(급수)·비 감지 판단
   LED       생장등 (조도가 낮으면 켠다)
   Display   짧은 단어 2줄
-  Speaker   alert 진입 순간에만 짧게 삑 (온열질환 예방 경고 포함)
+  (소리)    MODI Speaker는 안 쓴다. alert 진입/온열질환 경고/작물 인식음은 노트북에서 난다 (audio.py)
   Motor A/B 환기창 (두 모터가 함께 움직여야 열리고 닫힌다)
   Motor     스프링클러
-  * ToF, Dial, IMU, Joystick, Button 미사용 - 물리 버튼 없이 수동 조작은 앱으로만 한다
+  * ToF, Dial, IMU, Joystick, Button, Speaker 미사용 - 물리 버튼 없이 수동 조작은 앱으로만 한다
 """
 
 import json
@@ -22,6 +22,7 @@ import os
 import time
 
 from profiles import get_profile
+from audio import NullAudio
 from state import INSTANT_COMMANDS
 
 def josa(word, with_batchim, without_batchim):
@@ -41,6 +42,13 @@ def josa(word, with_batchim, without_batchim):
 # 틀릴 수 있으므로, 웹 화면의 "창문 상태 맞추기"로 바로잡을 수 있다.)
 VENT_STATE_PATH = "vent_state.json"
 
+# 장치 점검(웹 운영자 패널) 명령. 사람이 눈으로 보면서 하나씩 한다.
+HW_CHECK_COMMANDS = {"led_test", "display_test", "jog", "vent_test", "set_roles", "flip_sign",
+                     "vent_confirm"}
+LED_TEST_STEP = 0.8        # LED 점검에서 색 하나를 보여주는 시간(초)
+DISPLAY_TEST_HOLD = 3.0    # Display 점검 문구를 붙잡아 두는 시간(초)
+JOG_HOLD = 1.2             # 모터를 살짝 돌린 뒤 되돌리기까지 기다리는 시간(초)
+
 VENT_DURATION = 2.5        # 환기창 여닫는 데 걸리는 시간(초)
 SPRINKLER_DURATION = 4.0   # 스프링클러 회전 시간(초)
 SPRINKLER_SPEED = 60
@@ -57,8 +65,6 @@ CAMERA_FRAME_INTERVAL = 5.0   # 미리보기 프레임 갱신 주기(초). 그 �
 
 GROWTH_PHOTO_DIR = "growth_photos"
 GROWTH_PHOTO_INTERVAL = 7 * 24 * 3600.0   # 1주일마다 성장 사진 한 장
-
-BEEP_DURATION = 0.4        # 경고음 길이. 이 시간 뒤 자동으로 끈다
 
 # --- 온열질환 경고 (사람 안전 - 작물 기준과는 별개) ---
 # [중요] profiles.py의 vent_temp는 "작물이 덥다고 느끼는 온도"라 작물마다
@@ -128,8 +134,12 @@ RAIN_HUMIDITY_THRESHOLD = 85.0
 class Controller:
     """센서값을 판단하고 액추에이터를 움직인다. 메인 루프에서만 쓴다."""
 
-    def __init__(self, hw, store, vision=None, camera_preview=False, force_crop=None):
+    def __init__(self, hw, store, vision=None, camera_preview=False, force_crop=None,
+                 audio=None):
         self.hw = hw
+        # 소리는 MODI Speaker가 아니라 노트북에서 낸다 (audio.py 참고). 없으면 무음.
+        self.audio = audio if audio is not None else NullAudio()
+        store.update(sound_on=self.audio.enabled)
         self.store = store
         self.vision = vision
         # [시연 촬영용, 임시] 켜두면 실제 카메라 인식 결과를 무시하고 항상
@@ -151,14 +161,12 @@ class Controller:
         self._last_growth_week = {}   # crop_key -> 마지막으로 사진 남긴 주차
         self._last_camera_frame = 0.0
 
-        self._beep_until = 0.0
         self._last_level = None
         self._last_display = None
 
         self._heat_alarm_active = False    # 지금 고온 구간 안에서 이미 경고를 시작했는지
         self._heat_alarm_until = 0.0       # 경고 종료 예정 시각 (0이면 비활성)
         self._heat_alarm_next_pulse = 0.0  # 다음 삑/무음 전환 시각
-        self._heat_alarm_pulse_on = False  # 지금 삑 소리가 나는 중인지
 
         self._light_on = False
         self._light_changed_at = 0.0
@@ -172,6 +180,31 @@ class Controller:
             saved = self._load_vent_state()
             if saved is not None:
                 self.store.update(vent_open=saved)
+
+        # 장치 점검(웹 운영자 패널)용 진행 상태. 전부 "언제까지/언제 할지"만 기억하는
+        # 타임스탬프 방식이다 - sleep으로 기다리면 센서도 API도 멈춘다.
+        self._led_test = None            # {"steps": [(rgb, 초), ...], "i": 0, "next": 시각}
+        self._display_hold_until = 0.0   # 이 시각까지 Display에 점검 문구를 붙잡아 둔다
+        self._vent_test_close_at = 0.0   # 시험 구동으로 연 창문을 닫을 시각 (0이면 없음)
+        self._jog_back = None            # (motor_id, delta, 시각): 살짝 돌린 모터를 되돌릴 계획
+
+        self._publish_hw()
+
+    def _publish_hw(self):
+        """하드웨어 구성(모터 목록/역할/방향/ready)을 웹에 알린다. 바뀔 때만 부르면 된다."""
+        try:
+            self.store.update(hw=self.hw.describe())
+        except Exception as e:
+            print("[CTRL] 하드웨어 구성 읽기 실패(무시):", e)
+
+    @property
+    def vent_ready(self):
+        """환기창 모터 A/B 역할이 정해졌는가. 아니면 환기창은 절대 움직이지 않는다."""
+        return getattr(self.hw, "vent_ready", True)
+
+    @property
+    def sprinkler_ready(self):
+        return getattr(self.hw, "sprinkler_ready", True)
 
     # ------------------------------------------------------ 환기창 상태 기억
     def _load_vent_state(self):
@@ -217,7 +250,7 @@ class Controller:
         # [중요] hardware.open_vent()는 이제 절대각이 아니라 상대회전이다.
         # 이미 열려 있는데 또 열면 그만큼 더 돌아가버린다(원래 자리로
         # 돌아올 수 없게 됨) - 그래서 "닫혀 있을 때만" 열도록 막는다.
-        if self.busy or self.store.get("vent_open"):
+        if self.busy or self.store.get("vent_open") or not self.vent_ready:
             return False
         self.hw.open_vent()
         self.store.update(vent_open=True)
@@ -228,7 +261,7 @@ class Controller:
 
     def close_vent(self):
         # 같은 이유로 "열려 있을 때만" 닫는다.
-        if self.busy or not self.store.get("vent_open"):
+        if self.busy or not self.store.get("vent_open") or not self.vent_ready:
             return False
         self.hw.close_vent()
         self.store.update(vent_open=False)
@@ -255,7 +288,8 @@ class Controller:
         급수 동작을 표현한다. 시연 중에는 이 타이밍에 맞춰
         분무기로 흙 표면에 소량 분무한다.
         """
-        if self.busy:
+        # 모터가 없는데 "물을 주었습니다"라고 하면 화면이 거짓말이 된다
+        if self.busy or not self.sprinkler_ready:
             return False
         self.hw.set_sprinkler(SPRINKLER_SPEED)
         self.store.update(sprinkler_on=True)
@@ -398,6 +432,7 @@ class Controller:
                     "scan", "%s 확인했습니다" % josa(profile["name"], "을", "를"))
                 crop_started_at = time.time()
                 updates["crop_started_at"] = crop_started_at
+                self.audio.play("recognized")   # 핵심 장면: 웹의 인식 알림과 같은 순간에 "띠리링"
                 self._last_growth_week.pop(crop_key, None)
             updates["crop_key"] = crop_key
             updates["crop_name"] = profile["name"]
@@ -479,11 +514,17 @@ class Controller:
         매 틱마다 새로 쓰면 화면이 깜빡이고 통신도 낭비된다.
         96x96이라 긴 문장은 읽을 수 없다. 짧은 단어만.
         """
+        # 운영자가 "화면에 글자 띄우기"를 눌렀으면 그 문구를 잠깐 붙잡아 둔다
+        if time.time() < self._display_hold_until:
+            return
+
         if self.busy and self._busy_action:
             short = {
                 "vent_open": "창문 여는중",
                 "vent_close": "창문 닫는중",
                 "water": "물 주는중",
+                "vent_test": "창문 점검중",
+                "jog": "모터 점검중",
             }.get(self._busy_action, short)
 
         text = "%s\n%s" % (crop_name, short)
@@ -516,26 +557,18 @@ class Controller:
             self._heat_alarm_active = False
 
         if now >= self._heat_alarm_until:
-            if self._heat_alarm_pulse_on:
-                self.hw.speaker_off()
-                self._heat_alarm_pulse_on = False
             return
 
+        # 소리 길이는 audio가 알아서 끝낸다(끄는 단계가 필요 없다). 펄스 + 무음 간격마다 한 번씩.
         if now >= self._heat_alarm_next_pulse:
-            if self._heat_alarm_pulse_on:
-                self.hw.speaker_off()
-                self._heat_alarm_pulse_on = False
-                self._heat_alarm_next_pulse = now + HEAT_ALARM_GAP
-            else:
-                self.hw.beep(HEAT_ALARM_FREQ, 80)
-                self._heat_alarm_pulse_on = True
-                self._heat_alarm_next_pulse = now + HEAT_ALARM_PULSE
+            self.audio.play("heat")
+            self._heat_alarm_next_pulse = now + HEAT_ALARM_PULSE + HEAT_ALARM_GAP
 
     def render_sound(self, level):
         """alert에 '진입하는 순간'에만 짧게 울린다.
 
         계속 울리면 시연장에서 재앙이다. 온열질환 경고음(update_heat_alarm)이
-        스피커를 쓰는 동안에는 이 짧은 삑을 겹쳐 울리지 않는다 - 우선순위가
+        울리는 동안에는 이 짧은 삑을 겹쳐 울리지 않는다 - 우선순위가
         더 높은 경고라서 방해하면 안 된다.
         """
         now = time.time()
@@ -544,23 +577,30 @@ class Controller:
             self._last_level = level
             return
 
-        if self._beep_until and now >= self._beep_until:
-            self._beep_until = 0.0
-            self.hw.speaker_off()
-
         if level == "alert" and self._last_level != "alert":
-            self.hw.beep(880, 40)
-            self._beep_until = now + BEEP_DURATION
+            self.audio.play("alert")
 
         self._last_level = level
 
     # ------------------------------------------------------ 명령 처리
-    def handle_command(self, cmd):
-        """앱 또는 하드웨어 버튼에서 온 명령을 실행한다."""
+    def handle_command(self, cmd, args=None):
+        """앱(웹)에서 온 명령을 실행한다. args는 jog/set_roles/flip_sign 같은 인자 있는 명령용."""
         if cmd in ("vent_open", "vent_close", "vent_toggle"):
             # 사람이 방금 조작했다는 기록. VENT_MANUAL_HOLD 동안은 자동
             # 조치가 이걸 뒤집지 않는다 (아래 tick()의 자동 조치 단계 참고).
             self._vent_manual_at = time.time()
+            if not self.vent_ready:
+                if getattr(self.hw, "vent_roles_ok", True):
+                    why = "환기창 방향을 아직 확인하지 않아 움직이지 않았어요"
+                else:
+                    why = "환기창 모터 역할이 정해지지 않아 움직이지 않았어요"
+                self.store.add_history("vent_blocked", why)
+                return False
+        if cmd == "water" and not self.sprinkler_ready:
+            self.store.add_history("water_blocked", "스프링클러 모터가 없어 물을 주지 못했어요")
+            return False
+        if cmd in HW_CHECK_COMMANDS:
+            return self.handle_hw_check(cmd, args or {})
         if cmd == "vent_open":
             return self.open_vent()
         if cmd == "vent_close":
@@ -574,6 +614,9 @@ class Controller:
             return True
         if cmd == "light_toggle":
             self._set_light(not self._light_on)
+            return True
+        if cmd == "sound_test":
+            self.audio.play("test")
             return True
         if cmd in ("vent_mark_open", "vent_mark_closed"):
             # 모터는 돌리지 않는다. 실제 창문 위치를 사람이 보고 시스템의 믿음을 바로잡는다.
@@ -592,10 +635,119 @@ class Controller:
             return True
         return False
 
+    # ------------------------------------------------------ 장치 점검 (웹 운영자 패널)
+    def handle_hw_check(self, cmd, args):
+        """사람이 눈으로 확인하는 점검 명령. 하나씩, 아주 작게만 움직인다."""
+        now = time.time()
+
+        if cmd == "led_test":
+            # 빨강 -> 초록 -> 파랑 -> 흰색. 색 하나가 안 나오면 선/모듈 문제다.
+            steps = [((255, 0, 0), LED_TEST_STEP), ((0, 255, 0), LED_TEST_STEP),
+                     ((0, 0, 255), LED_TEST_STEP), ((255, 255, 255), LED_TEST_STEP)]
+            self._led_test = {"steps": steps, "i": 0, "next": now + steps[0][1]}
+            self.hw.set_led(steps[0][0])
+            self.store.add_history("hw_check", "LED 점검: 빨강 → 초록 → 파랑 → 흰색")
+            return True
+
+        if cmd == "display_test":
+            self._display_hold_until = now + DISPLAY_TEST_HOLD
+            self.hw.show_text("농깨비\n점검중")
+            self.store.add_history("hw_check", "Display 점검: '농깨비 / 점검중'을 띄웠습니다")
+            return True
+
+        if cmd == "jog":
+            motor_id, delta = args.get("motor_id"), int(args.get("delta", 20))
+            try:
+                self.hw.jog_motor(motor_id, delta)
+            except Exception as e:
+                self.store.add_history("hw_check", "모터 점검 실패: %s" % e)
+                return False
+            # 살짝 돌렸다가 같은 만큼 되돌려서 제자리로 돌아오게 한다
+            self._jog_back = (motor_id, -delta, now + JOG_HOLD)
+            self.store.add_history("hw_check", "모터 0x%X를 %+d° 살짝 돌렸다가 되돌립니다" % (motor_id, delta))
+            self._start_action("jog", JOG_HOLD * 2 + 0.3)
+            return True
+
+        if cmd == "vent_test":
+            # 환기창을 열었다가 같은 부호로 바로 닫는다 (방향이 맞는지 눈으로 보는 용도).
+            # 이미 열려 있으면 안 한다 - 열린 채로 또 열면 위치가 어긋난다.
+            # 방향 확인 전이라도 시험 구동은 가능해야 한다(그게 확인하는 방법이다)
+            if not getattr(self.hw, "vent_roles_ok", True) or self.store.get("vent_open"):
+                self.store.add_history("hw_check", "환기창 점검은 모터 역할이 정해지고 창문이 닫혀 있을 때만 할 수 있어요")
+                return False
+            self.hw.open_vent()
+            self._vent_test_close_at = now + VENT_DURATION
+            self.store.add_history("hw_check", "환기창 점검: 열었다가 바로 닫습니다")
+            self._start_action("vent_test", VENT_DURATION * 2 + 0.3)
+            return True
+
+        if cmd == "vent_confirm":
+            try:
+                self.hw.confirm_vent()
+            except Exception as e:
+                self.store.add_history("hw_check", "방향 확인 실패: %s" % e)
+                return False
+            self.store.add_history("hw_check", "환기창 방향을 확인했습니다. 이제 창문을 움직일 수 있어요")
+            self._publish_hw()
+            return True
+
+        if cmd in ("set_roles", "flip_sign"):
+            # 환기창이 열린 채로 역할/방향을 바꾸면 "열린 위치"의 의미가 달라져 위치가 어긋난다
+            if self.store.get("vent_open"):
+                self.store.add_history("hw_check", "창문이 열려 있어서 모터 설정을 바꾸지 않았어요. 먼저 닫아 주세요")
+                return False
+            try:
+                if cmd == "set_roles":
+                    self.hw.set_roles(args.get("vent_a"), args.get("vent_b"), args.get("sprinkler"))
+                    self.store.add_history("hw_check", "모터 역할을 저장했습니다")
+                else:
+                    self.hw.flip_sign(args.get("which"))
+                    self.store.add_history(
+                        "hw_check", "환기창 모터 %s의 방향을 뒤집었습니다. 다시 확인해 주세요" % str(args.get("which")).upper())
+            except Exception as e:
+                self.store.add_history("hw_check", "모터 설정 실패: %s" % e)
+                return False
+            self._publish_hw()
+            return True
+
+        return False
+
+    def update_hw_checks(self):
+        """진행 중인 점검(LED 색 순서, 시험 구동 복귀, Display 문구)을 한 틱씩 이어간다."""
+        now = time.time()
+
+        t = self._led_test
+        if t and now >= t["next"]:
+            t["i"] += 1
+            if t["i"] < len(t["steps"]):
+                rgb, secs = t["steps"][t["i"]]
+                self.hw.set_led(rgb)
+                t["next"] = now + secs
+            else:
+                self._led_test = None
+                self.hw.set_led(GROW_LIGHT_COLOR if self._light_on else LIGHT_OFF)  # 원래 생장등 상태로
+
+        if self._jog_back and now >= self._jog_back[2]:
+            motor_id, delta, _ = self._jog_back
+            self._jog_back = None
+            try:
+                self.hw.jog_motor(motor_id, delta)
+            except Exception as e:
+                print("[CTRL] 모터 되돌리기 실패:", e)
+
+        if self._vent_test_close_at and now >= self._vent_test_close_at:
+            self._vent_test_close_at = 0.0
+            self.hw.close_vent()
+
+        if self._display_hold_until and now >= self._display_hold_until:
+            self._display_hold_until = 0.0
+            self._last_display = None   # 평소 문구를 다시 쓰게 한다
+
     # ------------------------------------------------------ 메인 틱
     def tick(self, auto_mode=True):
         """메인 루프에서 매번 호출한다."""
         self._finish_if_done()
+        self.update_hw_checks()
 
         # 1) 센서 읽기
         env = self.hw.read_env()
@@ -626,7 +778,7 @@ class Controller:
         # 5) 앱에서 온 명령 (물리 버튼 없음 - 수동 조작은 앱으로만 한다)
         pending = self.store.pop_command()
         if pending and (not self.busy or pending["cmd"] in INSTANT_COMMANDS):
-            self.handle_command(pending["cmd"])
+            self.handle_command(pending["cmd"], pending.get("args"))
             return
 
         # 6) 자동 조치

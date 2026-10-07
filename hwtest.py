@@ -8,6 +8,7 @@ main.py를 돌리기 전에 이걸 먼저 실행한다.
     python hwtest.py            전체 점검
     python hwtest.py --motor    모터만
     python hwtest.py --sensor   센서만
+    python hwtest.py --probe    모터를 돌리지 않고 연결/센서/모터 ID만 읽기 (사람 입력 없음)
 """
 
 import argparse
@@ -54,13 +55,12 @@ def connect():
         "button": len(bundle.buttons),
         "led": len(bundle.leds),
         "display": len(bundle.displays),
-        "speaker": len(bundle.speakers),
         "motor": len(bundle.motors),
     }
     print("\n  모듈 개수:", counts)
 
-    # ToF/Dial/Button은 이 프로젝트에서 아예 안 쓰는 모듈이라(수동 조작은 앱으로만)
-    # 없어도 경고 대상이 아니다. 진짜 필요한 모듈만 빠졌는지 확인한다.
+    # ToF/Dial/Button은 이 프로젝트에서 아예 안 쓰는 모듈이고(수동 조작은 앱으로만),
+    # Speaker도 안 쓴다(소리는 노트북에서 난다 - audio.py). 없어도 경고 대상이 아니다.
     UNUSED = {"tof", "dial", "button"}
     missing = [k for k, v in counts.items() if v == 0 and k not in UNUSED]
     if missing:
@@ -73,7 +73,7 @@ def connect():
 
 
 def test_outputs(bundle, results):
-    line("2. 출력 모듈 (LED / Display / Speaker)")
+    line("2. 출력 모듈 (LED / Display)")
 
     if bundle.leds:
         led = bundle.leds[0]
@@ -94,13 +94,18 @@ def test_outputs(bundle, results):
         results["Display"] = ask("화면에 '농깨비 점검'이 떴나?")
         display.reset()
 
-    if bundle.speakers:
-        speaker = bundle.speakers[0]
-        print("  Speaker: 소리를 낸다")
-        speaker.tune = 880, 50
-        time.sleep(1.5)
-        speaker.reset()          # 주의: turn_off()가 아니라 reset()
-        results["Speaker"] = ask("소리가 났나?")
+    # 소리는 노트북에서 난다 (MODI Speaker 미사용)
+    try:
+        from audio import LaptopAudio
+        print("  노트북 소리: 삑 소리를 낸다")
+        audio = LaptopAudio()
+        audio.play("test")
+        time.sleep(1.2)
+        audio.close()
+        results["노트북 소리"] = ask("노트북에서 소리가 났나?")
+    except Exception as e:
+        print("  노트북 소리를 낼 수 없다:", e)
+        results["노트북 소리"] = False
 
 
 def test_sensors(bundle, results):
@@ -140,6 +145,7 @@ def test_motors(bundle, results):
         print("  모터가 없다.")
         return
 
+    print("  인식된 모터:", ", ".join("motors[%d]=0x%X" % (i, m.id) for i, m in enumerate(motors)))
     print("  모터를 하나씩 돌린다. 무엇이 움직이는지 잘 볼 것.")
     print("  환기창은 모터가 2개(A, B)다 - 둘이 반대 방향으로 함께 움직여야 문이 열린다.\n")
 
@@ -161,11 +167,22 @@ def test_motors(bundle, results):
             roles["sprinkler"] = i
 
     print()
-    if "vent_a" in roles and "vent_b" in roles and "sprinkler" in roles:
+    if "vent_a" in roles and "vent_b" in roles and "sprinkler" not in roles and len(motors) == 2:
+        print("  모터가 2개라 스프링클러는 없는 것으로 본다 (급수 동작은 생략된다).")
+        print("  [권장] hardware.py에 적을 것:")
+        print("      VENT_MOTOR_A_ID = 0x%X" % motors[roles["vent_a"]].id)
+        print("      VENT_MOTOR_B_ID = 0x%X" % motors[roles["vent_b"]].id)
+        results["Motor"] = True
+    elif "vent_a" in roles and "vent_b" in roles and "sprinkler" in roles:
         print("  확인 결과:")
-        print("    환기창 모터A = motors[%d]" % roles["vent_a"])
-        print("    환기창 모터B = motors[%d]" % roles["vent_b"])
-        print("    스프링클러   = motors[%d]" % roles["sprinkler"])
+        print("    환기창 모터A = motors[%d] (ID 0x%X)" % (roles["vent_a"], motors[roles["vent_a"]].id))
+        print("    환기창 모터B = motors[%d] (ID 0x%X)" % (roles["vent_b"], motors[roles["vent_b"]].id))
+        print("    스프링클러   = motors[%d] (ID 0x%X)" % (roles["sprinkler"], motors[roles["sprinkler"]].id))
+        print()
+        print("  [권장] 케이블을 다시 꽂아도 안 바뀌는 ID로 hardware.py에 적을 것:")
+        print("      VENT_MOTOR_A_ID = 0x%X" % motors[roles["vent_a"]].id)
+        print("      VENT_MOTOR_B_ID = 0x%X" % motors[roles["vent_b"]].id)
+        print("      SPRINKLER_MOTOR_ID = 0x%X" % motors[roles["sprinkler"]].id)
         print()
         if roles["vent_a"] == 2 and roles["vent_b"] == 0 and roles["sprinkler"] == 1:
             print("  hardware.py 기본값 그대로 쓰면 된다. 수정 불필요.")
@@ -250,8 +267,6 @@ def cleanup(bundle):
     try:
         for m in bundle.motors:
             m.speed = 0
-        if bundle.speakers:
-            bundle.speakers[0].reset()
         if bundle.leds:
             bundle.leds[0].turn_off()
         if bundle.displays:
@@ -260,16 +275,37 @@ def cleanup(bundle):
         pass
 
 
+def probe(bundle):
+    """아무것도 움직이지 않고 읽기만 한다. 사람이 안 봐도 돌릴 수 있다."""
+    line("probe - 읽기 전용")
+    if bundle.envs:
+        env = bundle.envs[0]
+        for _ in range(3):
+            print("  Env  온도 %.1f°C  습도 %.0f%%  조도 %.0f"
+                  % (env.temperature, env.humidity, env.illuminance))
+            time.sleep(0.8)
+    for i, m in enumerate(bundle.motors):
+        print("  motors[%d]  ID 0x%X  엔코더 각도 %s" % (i, m.id, m.angle))
+    if len(bundle.motors) < 3:
+        print("  [참고] 모터가 %d개다. 환기창 A·B + 스프링클러면 3개여야 한다." % len(bundle.motors))
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--motor", action="store_true", help="모터만 점검")
     p.add_argument("--sensor", action="store_true", help="센서만 점검")
+    p.add_argument("--probe", action="store_true",
+                   help="모터를 돌리지 않고 연결/센서/모터 ID만 읽기 (사람 입력 없음)")
     args = p.parse_args()
 
     results = {}
     bundle = None
     try:
         bundle, _ = connect()
+
+        if args.probe:
+            probe(bundle)
+            return
 
         run_all = not (args.motor or args.sensor)
         if run_all:

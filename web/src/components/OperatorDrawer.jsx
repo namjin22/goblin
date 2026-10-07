@@ -1,6 +1,7 @@
 import { Drawer } from "./Overlay";
 import { Icon } from "./Icons";
 import { preflight } from "../lib/preflight";
+import { HardwareCheck } from "./HardwareCheck";
 
 function Section({ title, children }) {
   return (
@@ -69,6 +70,10 @@ export function OperatorDrawer({ open, onClose, state, send, staleSec }) {
       ) : (
         <>
           <Checklist items={preflight(state, staleSec)} />
+
+          <Section title="장치 점검 (눈으로 확인하세요)">
+            <HardwareCheck state={state} send={send} />
+          </Section>
 
           <Section title="환기창 실제 상태 맞추기">
             <div

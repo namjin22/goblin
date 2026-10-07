@@ -40,12 +40,14 @@ export const LEVEL_STYLE = {
 };
 
 // 동작에 걸리는 시간(초) - controller.py의 VENT_DURATION / SPRINKLER_DURATION과 맞춘다
-export const ACTION_SECONDS = { vent_open: 2.5, vent_close: 2.5, water: 4.0 };
+export const ACTION_SECONDS = { vent_open: 2.5, vent_close: 2.5, water: 4.0, vent_test: 5.3, jog: 2.7 };
 
 export const ACTION_LABEL = {
   vent_open: "창문을 여는 중",
   vent_close: "창문을 닫는 중",
   water: "물을 주는 중",
+  vent_test: "환기창을 열었다 닫는 중",
+  jog: "모터를 확인하는 중",
 };
 
 export function relativeTime(epochSec, nowMs = Date.now()) {
