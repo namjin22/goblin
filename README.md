@@ -71,7 +71,7 @@ CROP_PROFILES = {
 | 🪟 | **환기창 자동 제어** | 작물별 기준 온도를 넘으면 개방. 습도가 급등하면(비) 자동으로 닫음 |
 | 💧 | **급수 판단** | 건조 신호를 감지하면 스프링클러 작동 |
 | 💡 | **생장등** | 주변이 어두우면 점등. 자기 밝기를 보정해 발진하지 않음 |
-| 🗣️ | **어르신 인터페이스** | 96×96 화면에 짧은 단어 2줄 + 음성 안내. 수치 대신 상태어 |
+| 🗣️ | **어르신 인터페이스** | 96×96 화면에 짧은 단어 2줄 + 노트북 경고음/인식음. 수치 대신 상태어 |
 | 🌡️ | **온열질환 경고** | 34도 이상이면 3분간 경고음. 작물이 아니라 **사람**을 위한 기준 |
 | 📱 | **모바일 앱** | 조회와 수동 조작. 설정 항목은 없음 |
 
@@ -208,11 +208,11 @@ python hwtest.py --motor    # 환기창 방향·각도 대화형 보정
 | Env | 온도 → 환기 판단 / 조도 → 생장등 판단 / 습도 → 건조도·비 감지 |
 | LED | 생장등 (흰색). 상태색 표시는 하지 않음 |
 | Display | 2줄 짧은 단어 |
-| Speaker | alert 진입 순간 0.4초 삑 + 34도 이상 온열질환 경고 |
+| (소리) | MODI Speaker는 안 쓴다. 경고음·인식음은 **노트북 스피커**에서 난다 (`audio.py`) |
 | Motor A / B | 환기창 (둘이 함께 움직여야 열림/닫힘) |
 | Motor (스프링클러) | 스프링클러 모형 |
 
-미사용: ToF, IMU, Joystick, Dial, Button (수동 조작은 앱 전용)
+미사용: ToF, IMU, Joystick, Dial, Button, Speaker (수동 조작은 앱 전용, 소리는 노트북)
 
 ## 하드웨어 배치
 
@@ -306,7 +306,14 @@ ToF를 쓰지 않으므로 6초마다 자동 촬영한다(`SCAN_INTERVAL`). 즉�
 { "command": "water" }
 ```
 
-가능한 값: `vent_open` `vent_close` `vent_toggle` `water` `scan` `light_toggle` `auto_on` `auto_off` `vent_mark_open` `vent_mark_closed`
+가능한 값: `vent_open` `vent_close` `vent_toggle` `water` `scan` `light_toggle` `auto_on` `auto_off` `vent_mark_open` `vent_mark_closed` `sound_test`
+장치 점검(웹 운영자 패널): `led_test` `display_test` `jog` `vent_test` `set_roles` `flip_sign` `vent_confirm`
+
+- `jog`: `{"command":"jog","args":{"motor_id":1298,"delta":20}}` - 모터 하나를 살짝(최대 30°) 돌렸다가 되돌린다
+- `set_roles`: `args:{"vent_a":ID,"vent_b":ID,"sprinkler":ID|null}` - 모터 역할 저장. 환기창이 닫혀 있을 때만
+- `flip_sign`: `args:{"which":"a"|"b"}` - 환기창 모터 방향 반전. 환기창이 닫혀 있을 때만
+- `vent_test`: 환기창을 열었다가 바로 닫는다 (방향 확인용). `vent_confirm`: 사람이 방향을 확인했다고 알린다
+- **역할/방향을 바꾼 뒤 `vent_confirm` 전까지 `vent_open/close`와 자동 조치는 환기창을 움직이지 않는다** (`/api/state`의 `vent_ready`)
 
 - `auto_on` / `auto_off`: 자동 조치 켜기/끄기
 - `vent_mark_open` / `vent_mark_closed`: **모터를 돌리지 않고** "창문이 지금 실제로 열려/닫혀 있다"고 알려준다 (재조립·재시작 뒤 어긋난 상태를 바로잡을 때)

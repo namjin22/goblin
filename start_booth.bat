@@ -12,10 +12,12 @@ title Nongkkaebi booth
 rem ---- settings ------------------------------------------------
 rem webcam index (check with: python hwtest.py / README "camera" section)
 set CAM=1
-rem extra options, e.g.  --mock   --no-auto   --verify-vent
-set EXTRA_ARGS=
+rem extra options, e.g.  --mock   --no-auto   --verify-vent   (can also be set from outside)
+rem (if not set, it stays empty)
 rem port of the web UI
 set PORT=5000
+rem 1 = open Edge fullscreen after start, 0 = server only (can also be set from outside)
+if not defined OPEN_BROWSER set OPEN_BROWSER=1
 rem --------------------------------------------------------------
 
 where python >nul 2>nul
@@ -36,12 +38,13 @@ echo 끝내려면 이 창에서 Ctrl+C 를 누르고 N 이 아니라 Y 를 입�
 echo.
 
 rem open the browser once, a few seconds after the server starts
-start "" /b powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep 8; try { Start-Process msedge -ArgumentList '--app=http://localhost:%PORT%/','--start-fullscreen' -ErrorAction Stop } catch { Start-Process 'http://localhost:%PORT%/' }"
+if "%OPEN_BROWSER%"=="1" start "" /b powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep 8; try { Start-Process msedge -ArgumentList '--app=http://localhost:%PORT%/','--start-fullscreen' -ErrorAction Stop } catch { Start-Process 'http://localhost:%PORT%/' }"
 
 :run
 python main.py --cam %CAM% --port %PORT% %EXTRA_ARGS%
 echo.
 echo [!] 농깨비가 멈췄어요 ^(코드 %errorlevel%^). 3초 뒤 다시 시작해요.
 echo     환기창이 맞는지 화면의 [운영자]에서 확인해 주세요.
-timeout /t 3 /nobreak >nul
+rem ping waits ~3s and also works when started detached (timeout does not)
+ping -n 4 127.0.0.1 >nul
 goto run
