@@ -11,19 +11,19 @@ export function StatusBanner({ online, state, staleSec }) {
     banner = {
       tone: "bg-berry-700",
       icon: "wifioff",
-      text: "서버와 연결이 끊겼어요. 지금 보이는 값은 마지막으로 받은 값이에요. 다시 연결하는 중…",
+      text: "서버와 연결이 끊겼어요. 다시 연결하는 중…",
     };
   } else if (state?.hw_error) {
     banner = {
       tone: "bg-berry-700",
       icon: "info",
-      text: `장치와 통신이 불안정해요. USB와 전원을 확인해 주세요. (${state.hw_error})`,
+      text: "장치 연결이 불안정해요. USB와 전원을 확인해 주세요",
     };
   } else if (state && staleSec > STALE_AFTER_SEC) {
     banner = {
       tone: "bg-sun-700",
       icon: "info",
-      text: `장치 응답이 ${Math.round(staleSec)}초째 없어요. 화면의 값이 최신이 아닐 수 있어요.`,
+      text: `장치 응답이 ${Math.round(staleSec)}초째 없어요`,
     };
   }
 
@@ -39,9 +39,9 @@ export function StatusBanner({ online, state, staleSec }) {
           className="overflow-hidden"
         >
           <div
-            className={`flex items-center justify-center gap-2 px-4 py-2 text-center text-[14px] font-semibold text-white ${banner.tone}`}
+            className={`flex items-center justify-center gap-3 px-5 py-3 text-center text-[17px] font-bold text-white ${banner.tone}`}
           >
-            <Icon name={banner.icon} size={17} className="shrink-0" />
+            <Icon name={banner.icon} size={22} className="shrink-0" />
             {banner.text}
           </div>
         </motion.div>

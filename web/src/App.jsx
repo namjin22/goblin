@@ -11,6 +11,7 @@ import { Timeline } from "./components/Timeline";
 import { LimitsDrawer } from "./components/LimitsDrawer";
 import { OperatorDrawer } from "./components/OperatorDrawer";
 import { PhoneModal } from "./components/PhoneModal";
+import { StudioDrawer } from "./components/StudioDrawer";
 import { RecognitionToast } from "./components/RecognitionToast";
 import { Toast } from "./components/Toast";
 import { Icon } from "./components/Icons";
@@ -51,10 +52,12 @@ export default function App() {
         <Header
           online={online}
           mock={state?.mock}
-          needsAttention={preflight(state, staleSec).some((i) => i.level !== "ok")}
+          needsAttention={preflight(state, staleSec, profiles).some((i) => i.level !== "ok")}
           onShowLimits={() => setPanel("limits")}
           onShowPhone={() => setPanel("phone")}
           onShowOperator={() => setPanel("operator")}
+          onShowStudio={() => setPanel("studio")}
+          modelWarn={!!state && profiles.some((p) => !(state.model_classes || []).includes(p.key))}
         />
 
         {!state ? (
@@ -62,7 +65,7 @@ export default function App() {
             <Loading online={online} />
           </div>
         ) : (
-          <main className="grid flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-12 lg:gap-5 lg:px-8 lg:pb-6">
+          <main className="grid flex-1 grid-cols-1 gap-6 p-6 lg:grid-cols-12 lg:gap-6 lg:px-10 lg:pb-7 lg:pt-5">
             {/* 윗줄: 보는 것(인식) → 판단 */}
             <div className="lg:col-span-4">
               <CameraCard state={state} onScan={() => send("scan", "작물을 다시 확인할게요")} />
@@ -72,10 +75,10 @@ export default function App() {
             </div>
 
             {/* 아랫줄: 그 결과 움직이는 장치 → 직접 조작 → 기록 */}
-            <div className="lg:col-span-12 xl:col-span-5 2xl:col-span-6">
+            <div className="lg:col-span-12 xl:col-span-5">
               <DevicesCard state={state} />
             </div>
-            <div className="lg:col-span-6 xl:col-span-4 2xl:col-span-3">
+            <div className="lg:col-span-6 xl:col-span-4">
               <ControlsCard state={state} send={send} />
             </div>
             <div className="lg:col-span-6 xl:col-span-3">
@@ -85,8 +88,9 @@ export default function App() {
         )}
 
         <LimitsDrawer open={panel === "limits"} onClose={close} />
-        <OperatorDrawer open={panel === "operator"} onClose={close} state={state} send={send} staleSec={staleSec} />
+        <OperatorDrawer open={panel === "operator"} onClose={close} state={state} send={send} staleSec={staleSec} profiles={profiles} />
         <PhoneModal open={panel === "phone"} onClose={close} info={info} />
+        <StudioDrawer open={panel === "studio"} onClose={close} state={state} profiles={profiles} send={send} />
         <RecognitionToast state={state} />
         <Toast toast={toast} />
       </div>

@@ -42,6 +42,9 @@ export const LEVEL_STYLE = {
 // 동작에 걸리는 시간(초) - controller.py의 VENT_DURATION / SPRINKLER_DURATION과 맞춘다
 export const ACTION_SECONDS = { vent_open: 2.5, vent_close: 2.5, water: 4.0, vent_test: 5.3, jog: 2.7 };
 
+// 버튼 안에 넣는 아주 짧은 진행 문구 ("창문 여는 중")
+export const ACTION_SHORT = { vent_open: "여는 중", vent_close: "닫는 중", vent_test: "점검 중", jog: "확인 중" };
+
 export const ACTION_LABEL = {
   vent_open: "창문을 여는 중",
   vent_close: "창문을 닫는 중",

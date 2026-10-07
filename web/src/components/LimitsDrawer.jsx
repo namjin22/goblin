@@ -30,20 +30,19 @@ export function LimitsDrawer({ open, onClose }) {
     <Drawer
       open={open}
       onClose={onClose}
-      title="숨기지 않는 한계"
-      subtitle="질문받기 전에 먼저 말씀드려요."
+      title="한계"
     >
-      <ul className="space-y-3">
+      <ul className="space-y-4">
         {LIMITS.map((l, i) => (
           <motion.li
             key={l.title}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.08 + i * 0.05 }}
-            className="rounded-2xl bg-paper px-4 py-3.5"
+            className="rounded-3xl bg-paper px-5 py-5"
           >
-            <h3 className="text-[15px] font-bold text-ink">{l.title}</h3>
-            <p className="mt-1 text-[13.5px] leading-relaxed text-ink-soft">{l.body}</p>
+            <h3 className="text-[20px] font-extrabold text-ink">{l.title}</h3>
+            <p className="mt-2 text-[17px] leading-relaxed text-ink-soft">{l.body}</p>
           </motion.li>
         ))}
       </ul>

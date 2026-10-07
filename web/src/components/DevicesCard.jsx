@@ -3,12 +3,12 @@ import { Card } from "./Card";
 
 function Tile({ label, status, active, children }) {
   return (
-    <div className="flex flex-col rounded-2xl bg-paper p-3">
-      <div className="relative flex flex-1 items-center justify-center py-1">{children}</div>
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <span className="text-[13px] font-semibold text-ink-soft">{label}</span>
+    <div className="flex flex-col rounded-3xl bg-paper px-3 py-4">
+      <div className="relative flex flex-1 items-center justify-center">{children}</div>
+      <div className="mt-3 flex flex-col items-center gap-2">
+        <span className="text-[18px] font-bold text-ink">{label}</span>
         <span
-          className={`rounded-full px-2.5 py-0.5 text-[12px] font-bold ${
+          className={`rounded-full px-3.5 py-1 text-[16px] font-extrabold ${
             active ? "bg-leaf-600 text-white" : "bg-white text-ink-soft ring-1 ring-line"
           }`}
         >
@@ -23,7 +23,7 @@ function Tile({ label, status, active, children }) {
 function WindowGraphic({ open }) {
   const slide = { duration: 2.5, ease: "easeInOut" };
   return (
-    <svg viewBox="0 0 140 100" className="h-[88px] w-full max-w-[150px] lg:h-[104px] lg:max-w-[170px]">
+    <svg viewBox="0 0 140 100" className="h-[72px] w-full max-w-[120px]">
       <rect x="10" y="6" width="120" height="88" rx="8" fill="#e8f2dc" stroke="#8a6a49" strokeWidth="4" />
       {/* 열렸을 때 보이는 바깥 풍경 */}
       <rect x="16" y="12" width="108" height="76" rx="4" fill="#cfe7f5" />
@@ -49,7 +49,7 @@ function WindowGraphic({ open }) {
 /** 스프링클러(레고 모형): 켜지면 머리가 흔들리고 물방울이 떨어진다 */
 function SprinklerGraphic({ on }) {
   return (
-    <svg viewBox="0 0 140 100" className="h-[88px] w-full max-w-[150px] lg:h-[104px] lg:max-w-[170px]">
+    <svg viewBox="0 0 140 100" className="h-[72px] w-full max-w-[120px]">
       <rect x="62" y="48" width="16" height="40" rx="3" fill="#8a6a49" />
       <rect x="40" y="86" width="60" height="8" rx="4" fill="#5a4330" />
       {/* 머리: 아래쪽 가운데(bbox 기준)를 축으로 좌우로 흔든다 */}
@@ -79,7 +79,7 @@ function SprinklerGraphic({ on }) {
 /** 생장등: 켜지면 따뜻하게 빛난다 */
 function LightGraphic({ on }) {
   return (
-    <svg viewBox="0 0 140 100" className="h-[88px] w-full max-w-[150px] lg:h-[104px] lg:max-w-[170px]">
+    <svg viewBox="0 0 140 100" className="h-[72px] w-full max-w-[120px]">
       <defs>
         <radialGradient id="glow" cx="50%" cy="50%" r="50%">
           <stop offset="0%" stopColor="#fff3b0" stopOpacity="0.95" />
@@ -115,11 +115,11 @@ function LightGraphic({ on }) {
 function DisplayGraphic({ text }) {
   const [line1 = "", line2 = ""] = (text || "").split("\n");
   return (
-    <div className="flex aspect-square w-[88px] flex-col items-center justify-center gap-1 rounded-xl bg-[#101a12] px-2 text-center shadow-[inset_0_0_0_3px_#2b3a2e,0_0_18px_rgba(116,176,79,0.25)]">
-      <span className="max-w-full truncate text-[17px] font-bold leading-tight text-white">
+    <div className="flex aspect-square w-[72px] flex-col items-center justify-center gap-1 rounded-xl bg-[#101a12] px-2 text-center shadow-[inset_0_0_0_3px_#2b3a2e,0_0_18px_rgba(116,176,79,0.25)]">
+      <span className="max-w-full truncate text-[14px] font-bold leading-tight text-white">
         {line1 || "·"}
       </span>
-      <span className="max-w-full truncate text-[15px] font-semibold leading-tight text-leaf-300">
+      <span className="max-w-full truncate text-[12.5px] font-semibold leading-tight text-leaf-300">
         {line2}
       </span>
     </div>
@@ -136,9 +136,9 @@ export function DevicesCard({ state }) {
     : "닫힘";
 
   return (
-    <Card title="장치 상태" icon="auto">
+    <Card title="장치" icon="auto">
       <div className="flex h-full flex-col">
-      <div className="grid flex-1 grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-2 2xl:grid-cols-4">
+      <div className="grid flex-1 grid-cols-2 gap-4 lg:grid-cols-4">
         <Tile label="환기창" status={ventStatus} active={state.vent_open}>
           <WindowGraphic open={state.vent_open} />
         </Tile>
@@ -152,13 +152,10 @@ export function DevicesCard({ state }) {
         <Tile label="생장등" status={state.light_on ? "켜짐" : "꺼짐"} active={state.light_on}>
           <LightGraphic on={state.light_on} />
         </Tile>
-        <Tile label="작은 화면" status="Display" active={false}>
+        <Tile label="화면" status="켜짐" active={false}>
           <DisplayGraphic text={state.display_text} />
         </Tile>
       </div>
-      <p className="mt-3 text-[12px] leading-relaxed text-ink-soft">
-        스프링클러는 레고 모형이에요. 실제 제품에서는 이 자리에 물 밸브가 연결돼요.
-      </p>
       </div>
     </Card>
   );

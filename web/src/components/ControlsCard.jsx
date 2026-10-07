@@ -2,112 +2,63 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Card } from "./Card";
 import { Icon } from "./Icons";
-import { ACTION_LABEL, ACTION_SECONDS } from "../lib/format";
+import { ACTION_SECONDS, ACTION_SHORT } from "../lib/format";
+
+const TONES = {
+  leaf: { box: "hover:border-leaf-300 hover:bg-leaf-50", icon: "bg-leaf-100 text-leaf-700", bar: "bg-leaf-500" },
+  sky: { box: "hover:border-sky-500/50 hover:bg-sky-100/60", icon: "bg-sky-100 text-sky-700", bar: "bg-sky-500" },
+  sun: { box: "hover:border-sun-500/50 hover:bg-sun-100/60", icon: "bg-sun-100 text-sun-700", bar: "bg-sun-500" },
+};
 
 /**
- * 동작 상태 줄. 높이를 고정해서(동작 중이든 아니든) 카드가 커졌다 줄어들며 화면이 출렁이지 않게 한다.
- * 모터가 도는 동안은 진행 정도를 보여준다 (서버는 busy 여부만 알려줘서 시간으로 추정).
+ * 큰 조작 버튼. 모터가 도는 동안은 이 버튼 안에서 진행 막대와 "여는 중…"을 보여준다
+ * (카드 위에 따로 상태 줄을 두면 레이아웃이 출렁이고 글자만 늘어난다).
  */
-function StatusLine({ action }) {
-  const total = ACTION_SECONDS[action] || 3;
-  return (
-    <div className="mb-3 h-[52px]">
-      {/* AnimatePresence의 wait는 쓰지 않는다: 이전 것이 사라질 때까지 기다리면 누른 직후 반응이 늦어진다 */}
-      <>
-        {action ? (
-          <motion.div
-            key={action}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="h-full rounded-2xl bg-leaf-50 px-4 py-2"
-          >
-            <p className="mb-1.5 flex items-center gap-2 text-[14px] font-bold text-leaf-800">
-              <span className="h-2 w-2 animate-[blink_0.8s_infinite] rounded-full bg-leaf-500" />
-              {ACTION_LABEL[action] || "동작 중"}
-            </p>
-            <div className="h-2 overflow-hidden rounded-full bg-white">
-              <motion.div
-                className="h-full rounded-full bg-leaf-500"
-                initial={{ width: "0%" }}
-                animate={{ width: "100%" }}
-                transition={{ duration: total, ease: "linear" }}
-              />
-            </div>
-          </motion.div>
-        ) : (
-          <motion.p
-            key="idle"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex h-full items-center rounded-2xl bg-paper px-4 text-[13px] text-ink-soft"
-          >
-            눌러 보세요. 장치가 바로 움직여요.
-          </motion.p>
-        )}
-      </>
-    </div>
-  );
-}
-
-function ActionButton({ icon, label, sub, onClick, disabled, tone = "leaf" }) {
-  const tones = {
-    leaf: "hover:border-leaf-300 hover:bg-leaf-50",
-    sky: "hover:border-sky-500/50 hover:bg-sky-100/60",
-    sun: "hover:border-sun-500/50 hover:bg-sun-100/60",
-    ink: "hover:border-ink/30 hover:bg-paper",
-  };
-  const iconTones = {
-    leaf: "bg-leaf-100 text-leaf-700",
-    sky: "bg-sky-100 text-sky-700",
-    sun: "bg-sun-100 text-sun-700",
-    ink: "bg-paper text-ink-soft",
-  };
+function BigButton({ icon, label, note, tone = "leaf", onClick, disabled, working, workingText, seconds }) {
+  const t = TONES[tone];
   return (
     <motion.button
       whileTap={disabled ? undefined : { scale: 0.96 }}
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-3 rounded-2xl border border-line bg-card px-3.5 py-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${tones[tone]}`}
+      className={`relative flex h-full min-h-[150px] flex-col items-center justify-center gap-3.5 overflow-hidden rounded-[28px] border-2 border-line bg-card px-3 py-5 transition disabled:cursor-not-allowed ${
+        working ? "border-leaf-300 bg-leaf-50" : disabled ? "opacity-45" : t.box
+      }`}
     >
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconTones[tone]}`}>
-        <Icon name={icon} size={22} />
+      <span className={`flex h-[68px] w-[68px] items-center justify-center rounded-3xl ${t.icon}`}>
+        <Icon name={icon} size={38} />
       </span>
-      <span className="min-w-0">
-        <span className="block text-[16px] font-bold text-ink">{label}</span>
-        <span className="block truncate text-[12px] text-ink-soft">{sub}</span>
-      </span>
+      <span className="whitespace-nowrap text-[clamp(1.15rem,1.45vw,1.5rem)] font-extrabold leading-none text-ink">{working ? workingText : label}</span>
+      {note && !working && <span className="-mt-1 text-[14px] font-semibold text-ink-soft">{note}</span>}
+      {working && (
+        <motion.span
+          key={workingText}
+          className={`absolute inset-x-0 bottom-0 h-2.5 ${t.bar}`}
+          initial={{ width: "0%" }}
+          animate={{ width: "100%" }}
+          transition={{ duration: seconds || 3, ease: "linear" }}
+        />
+      )}
     </motion.button>
   );
 }
 
+/** 자동 조치 스위치. 카드 제목 줄에 둔다. */
 function AutoSwitch({ on, onToggle }) {
   return (
     <button
       onClick={onToggle}
-      className="flex w-full items-center justify-between gap-3 rounded-2xl bg-paper px-4 py-3 text-left"
       role="switch"
       aria-checked={on}
+      aria-label="자동 조치"
+      className="flex h-12 items-center gap-3.5 rounded-full border-2 border-line bg-paper pl-5 pr-2.5 transition hover:border-leaf-300"
     >
-      <span>
-        <span className="flex items-center gap-2 text-[15px] font-bold text-ink">
-          <Icon name="auto" size={18} className={on ? "text-leaf-600" : "text-ink-soft"} />
-          자동 조치 {on ? "켜짐" : "꺼짐"}
-        </span>
-        <span className="mt-0.5 block text-[12px] leading-snug text-ink-soft">
-          {on
-            ? "기준을 넘으면 사람이 묻지 않아도 알아서 움직여요"
-            : "꺼져 있어요. 직접 누른 것만 움직여요"}
-        </span>
-      </span>
-      <span
-        className={`relative h-8 w-14 shrink-0 rounded-full transition-colors ${
-          on ? "bg-leaf-500" : "bg-line"
-        }`}
-      >
+      <span className="text-[17px] font-bold text-ink">자동</span>
+      <span className={`relative h-8 w-[3.75rem] rounded-full transition-colors ${on ? "bg-leaf-500" : "bg-line"}`}>
         <motion.span
           className="absolute top-1 h-6 w-6 rounded-full bg-white shadow"
           initial={false}
-          animate={{ left: on ? 28 : 4 }}
+          animate={{ left: on ? 32 : 4 }}
           transition={{ type: "spring", stiffness: 500, damping: 32 }}
         />
       </span>
@@ -115,10 +66,11 @@ function AutoSwitch({ on, onToggle }) {
   );
 }
 
+const VENT_ACTIONS = ["vent_open", "vent_close", "vent_test"];
+
 export function ControlsCard({ state, send }) {
-  // 스위치는 누르자마자 반응해야 해서, 서버 상태가 따라올 때까지 낙관적으로 보여준다
+  // 누르자마자 반응해야 해서, 서버 상태가 따라올 때까지(최대 1초) 낙관적으로 보여준다
   const [optimisticAuto, setOptimisticAuto] = useState(null);
-  // 모터 명령도 마찬가지: 서버 상태(busy)는 최대 1초 뒤에야 오므로, 누른 즉시 진행 표시를 켠다
   const [pendingAction, setPendingAction] = useState(null);
   const timer = useRef(null);
   const pendingTimer = useRef(null);
@@ -138,7 +90,6 @@ export function ControlsCard({ state, send }) {
     []
   );
 
-  /** 모터를 쓰는 명령: 누르는 즉시 진행 표시, 실패하면 되돌린다 */
   const runMotor = async (action, command, okText) => {
     setPendingAction(action);
     clearTimeout(pendingTimer.current);
@@ -159,57 +110,48 @@ export function ControlsCard({ state, send }) {
   };
 
   const busy = state.busy || !!pendingAction;
-  // 환기창은 모터 역할/방향이 확인되기 전에는 서버가 거부한다. 눌러서 헛수고하지 않게 미리 알려준다.
-  const ventBlock = !state.vent_roles_ok
-    ? "모터 역할을 먼저 정해 주세요 (운영자)"
-    : !state.vent_verified
-    ? "방향 확인이 필요해요 (운영자)"
-    : null;
-  const shownAction = state.busy ? state.busy_action : pendingAction;
+  const action = state.busy ? state.busy_action : pendingAction;
+  const ventWorking = busy && VENT_ACTIONS.includes(action);
+  const waterWorking = busy && action === "water";
+
+  // 막혔을 땐 이유를 아주 짧게 (자세한 건 운영자 화면에서)
+  const ventNote = !state.vent_roles_ok ? "모터 설정 필요" : !state.vent_verified ? "방향 확인 필요" : null;
 
   return (
-    <Card title="직접 조작" icon="auto">
-      <StatusLine action={busy ? shownAction : null} />
-
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-        <ActionButton
+    <Card title="조작" icon="auto" right={<AutoSwitch on={auto} onToggle={toggleAuto} />}>
+      <div className="grid h-full grid-cols-3 gap-5">
+        <BigButton
           icon="window"
           tone="leaf"
           label={state.vent_open ? "창문 닫기" : "창문 열기"}
-          sub={ventBlock || (state.vent_open ? "지금 열려 있어요" : "지금 닫혀 있어요")}
-          disabled={busy || !!ventBlock}
+          note={ventNote}
+          disabled={busy || !!ventNote}
+          working={ventWorking}
+          workingText={`창문 ${ACTION_SHORT[action] || "…"}`}
+          seconds={ACTION_SECONDS[action]}
           onClick={() =>
             state.vent_open
               ? runMotor("vent_close", "vent_close", "창문을 닫을게요")
               : runMotor("vent_open", "vent_open", "창문을 열게요")
           }
         />
-        <ActionButton
+        <BigButton
           icon="drop"
           tone="sky"
           label="물 주기"
-          sub={state.sprinkler_ready ? "스프링클러를 돌려요" : "스프링클러 모터가 없어요"}
+          note={state.sprinkler_ready ? null : "모터 없음"}
           disabled={busy || !state.sprinkler_ready}
+          working={waterWorking}
+          workingText="물 주는 중"
+          seconds={ACTION_SECONDS.water}
           onClick={() => runMotor("water", "water", "물을 줄게요")}
         />
-        <ActionButton
+        <BigButton
           icon="bulb"
           tone="sun"
           label={state.light_on ? "생장등 끄기" : "생장등 켜기"}
-          sub={state.light_on ? "지금 켜져 있어요" : "지금 꺼져 있어요"}
           onClick={() => send("light_toggle", state.light_on ? "생장등을 껐어요" : "생장등을 켰어요")}
         />
-        <ActionButton
-          icon="scan"
-          tone="ink"
-          label="다시 인식"
-          sub="바로 다시 봐요"
-          onClick={() => send("scan", "작물을 다시 확인할게요")}
-        />
-      </div>
-
-      <div className="mt-2.5">
-        <AutoSwitch on={auto} onToggle={toggleAuto} />
       </div>
     </Card>
   );

@@ -51,12 +51,11 @@ export function RecognitionToast({ state }) {
                   <Icon name="leaf" size={26} strokeWidth={2} />
                 </span>
                 <div>
-                  <p className="text-[20px] font-extrabold text-ink">
+                  <p className="text-[28px] font-extrabold text-ink">
                     {josa(event.cropName, "을", "를")} 알아봤어요
                   </p>
-                  <p className="text-[14px] text-ink-soft">
-                    재배 기준이 <b className="text-ink">저절로</b> 정해졌어요 · 창문은{" "}
-                    <b className="text-ink">{event.ventTemp}°C</b>부터 열어요
+                  <p className="text-[18px] text-ink-soft">
+                    창문은 <b className="text-ink">{event.ventTemp}°C</b>부터 열어요
                   </p>
                 </div>
               </>
@@ -65,7 +64,7 @@ export function RecognitionToast({ state }) {
                 <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-paper text-ink-soft">
                   <Icon name="camera" size={26} />
                 </span>
-                <p className="text-[18px] font-bold text-ink">작물이 안 보여요</p>
+                <p className="text-[24px] font-bold text-ink">작물이 안 보여요</p>
               </>
             )}
           </motion.div>

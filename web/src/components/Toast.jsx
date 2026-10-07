@@ -18,11 +18,11 @@ export function Toast({ toast }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ type: "spring", stiffness: 420, damping: 30 }}
-            className={`flex items-center gap-2 rounded-full px-5 py-3 text-[15px] font-medium shadow-lg ${
+            className={`flex items-center gap-3 rounded-full px-7 py-4 text-[18px] font-bold shadow-lg ${
               TONE[toast.tone] || TONE.info
             }`}
           >
-            <Icon name={toast.tone === "ok" ? "check" : "info"} size={18} />
+            <Icon name={toast.tone === "ok" ? "check" : "info"} size={22} />
             {toast.text}
           </motion.div>
         )}

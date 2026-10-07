@@ -6,7 +6,7 @@ import { josa } from "./format";
 const HEAT_DEFAULT = 34; // 사람 온열질환 경고의 원래 기준. controller.py의 HEAT_DANGER_TEMP 주석 참고
 const STALE_AFTER_SEC = 8;
 
-export function preflight(state, staleSec) {
+export function preflight(state, staleSec, profiles = []) {
   if (!state) return [];
   const items = [];
 
@@ -29,6 +29,20 @@ export function preflight(state, staleSec) {
       ? { key: "cam", level: "ok", label: "카메라 화면", detail: "받는 중" }
       : { key: "cam", level: "warn", label: "카메라 화면", detail: "아직 못 받았어요" }
   );
+
+  // 모델이 모르는 작물이 있으면 그 작물은 절대 인식되지 않는다 (예: 작물을 바꾼 직후)
+  const known = state.model_classes;
+  const missing = profiles.filter((p) => !known || !known.includes(p.key)).map((p) => p.name);
+  if (profiles.length) {
+    items.push(
+      missing.length === 0
+        ? { key: "model", level: "ok", label: "AI 모델", detail: "모든 작물을 알고 있어요" }
+        : {
+            key: "model", level: "fail", label: "AI 모델",
+            detail: `${missing.join(", ")}을(를) 몰라요. 헤더의 'AI 학습'에서 사진을 찍고 학습해 주세요`,
+          }
+    );
+  }
 
   items.push(
     state.crop_key
