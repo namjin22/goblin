@@ -21,9 +21,11 @@ import json
 import os
 import time
 
-from profiles import get_profile
+from profiles import CROP_PROFILES, get_profile
 from audio import NullAudio
 from state import INSTANT_COMMANDS
+from training import COLLECT_TARGET, DATA_DIR, Collector, Trainer, count_images
+from vision import read_class_map
 
 def josa(word, with_batchim, without_batchim):
     """마지막 글자 받침 유무로 조사를 고른다. josa("당근", "이", "가") -> "당근이".
@@ -43,6 +45,12 @@ def josa(word, with_batchim, without_batchim):
 VENT_STATE_PATH = "vent_state.json"
 
 # 장치 점검(웹 운영자 패널) 명령. 사람이 눈으로 보면서 하나씩 한다.
+# AI 학습 화면이 열려 있는 동안만 미리보기를 이 간격으로 갱신한다. 웹이 몇 초마다 "열려 있다"고
+# 알려 주고(studio_ping), 안 오면 알아서 멈춘다. 평소에는 인식용 6초 촬영만 쓴다 - 웹캠을 자주
+# 부르면 메인 루프가 멈춘 적이 있어서(camera_preview 주석 참고) 필요한 때만 짧게 쓴다.
+STUDIO_FRAME_INTERVAL = 1.2
+STUDIO_HOLD = 8.0
+
 HW_CHECK_COMMANDS = {"led_test", "display_test", "jog", "vent_test", "set_roles", "flip_sign",
                      "vent_confirm"}
 LED_TEST_STEP = 0.8        # LED 점검에서 색 하나를 보여주는 시간(초)
@@ -135,7 +143,7 @@ class Controller:
     """센서값을 판단하고 액추에이터를 움직인다. 메인 루프에서만 쓴다."""
 
     def __init__(self, hw, store, vision=None, camera_preview=False, force_crop=None,
-                 audio=None):
+                 audio=None, data_dir=DATA_DIR, model_dir="models", train_args=None, train_root=None):
         self.hw = hw
         # 소리는 MODI Speaker가 아니라 노트북에서 낸다 (audio.py 참고). 없으면 무음.
         self.audio = audio if audio is not None else NullAudio()
@@ -187,8 +195,40 @@ class Controller:
         self._display_hold_until = 0.0   # 이 시각까지 Display에 점검 문구를 붙잡아 둔다
         self._vent_test_close_at = 0.0   # 시험 구동으로 연 창문을 닫을 시각 (0이면 없음)
         self._jog_back = None            # (motor_id, delta, 시각): 살짝 돌린 모터를 되돌릴 계획
+        self._last_hw_refresh = 0.0
 
         self._publish_hw()
+
+        # --- AI 학습 (웹) ---
+        self._studio_until = 0.0
+        self._last_studio_frame = 0.0
+        self.collector = Collector(vision, store, self.audio, self._publish_preview, data_dir=data_dir)
+        self.trainer = Trainer(store, vision, self.audio, root=train_root, data_dir=data_dir,
+                               model_dir=model_dir, extra_args=train_args)
+        # 모의 비전은 학습된 모델이 없지만 모든 작물을 "아는 척"한다 (웹 화면 개발용).
+        # 모의 모드에서 직접 학습시키면(model_dir 아래에 저장) 그 모델의 클래스로 바뀐다.
+        classes = read_class_map(os.path.join(model_dir, "class_map.json"))
+        if classes is None and vision is not None and not hasattr(vision, "cap"):
+            classes = list(CROP_PROFILES) + ["background"]
+        store.update(dataset=count_images(data_dir), model_classes=classes,
+                     camera_real=hasattr(vision, "cap"))
+
+    def shutdown(self):
+        """프로그램을 끌 때: 돌고 있는 학습 프로세스가 고아로 남지 않게 정리한다."""
+        proc = getattr(self.trainer, "_proc", None)
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+
+    def update_studio_preview(self):
+        """AI 학습 화면이 열려 있는 동안만 웹 미리보기를 빠르게 갱신한다."""
+        now = time.time()
+        if (self.vision is None or now >= self._studio_until or self.collector.active
+                or now - self._last_studio_frame < STUDIO_FRAME_INTERVAL):
+            return
+        self._last_studio_frame = now
+        frame = self.vision.capture()
+        if frame is not None:
+            self._publish_preview(frame)
 
     def _publish_hw(self):
         """하드웨어 구성(모터 목록/역할/방향/ready)을 웹에 알린다. 바뀔 때만 부르면 된다."""
@@ -409,6 +449,13 @@ class Controller:
 
         crop_key = self.force_crop if self.force_crop else self.vision.classify_crop(frame)
 
+        # 모델이 프로파일에 없는 클래스를 내놓으면(작물 구성을 바꾼 직후 등) 그 작물의 기준을 알 수
+        # 없다. None으로 두면 "인식 못 하면 이전 작물 유지" 규칙 때문에 확률 막대는 새 클래스를
+        # 가리키는데 화면 이름만 옛 작물로 남는 모순이 생긴다(실제로 상추 95%인데 '당근'이 떴다).
+        # 그래서 "작물이 안 보인다"로 정리한다.
+        if crop_key and crop_key != "background" and crop_key not in CROP_PROFILES:
+            crop_key = "background"
+
         updates = {
             # force_crop이면 화면의 작물은 강제값이라 모델 확률을 보여주면 거짓이 된다
             "crop_probs": None if self.force_crop else getattr(self.vision, "last_probs", None),
@@ -618,6 +665,24 @@ class Controller:
         if cmd == "sound_test":
             self.audio.play("test")
             return True
+        if cmd == "studio_ping":
+            self._studio_until = time.time() + STUDIO_HOLD
+            return True
+        if cmd == "collect_start":
+            a = args or {}
+            return self.collector.start(a.get("crop"), a.get("target", COLLECT_TARGET))
+        if cmd == "collect_stop":
+            return self.collector.stop()
+        if cmd == "data_clear":
+            self.collector.clear((args or {}).get("crop"))
+            return True
+        if cmd == "train_start":
+            if self.collector.active:
+                self.store.add_history("train", "사진을 찍는 중에는 학습을 시작할 수 없어요")
+                return False
+            return self.trainer.start()
+        if cmd == "train_stop":
+            return self.trainer.stop()
         if cmd in ("vent_mark_open", "vent_mark_closed"):
             # 모터는 돌리지 않는다. 실제 창문 위치를 사람이 보고 시스템의 믿음을 바로잡는다.
             is_open = cmd == "vent_mark_open"
@@ -712,6 +777,16 @@ class Controller:
 
         return False
 
+    def update_hw_refresh(self):
+        """2초마다 모터 구성이 바뀌었는지 본다(늦게 인식된 모터 반영). 바뀌면 웹에 다시 알린다."""
+        now = time.time()
+        if now - self._last_hw_refresh < 2.0:
+            return
+        self._last_hw_refresh = now
+        if self.hw.refresh():
+            self._publish_hw()
+            self.store.add_history("hw_change", "모터 연결이 바뀌었어요")
+
     def update_hw_checks(self):
         """진행 중인 점검(LED 색 순서, 시험 구동 복귀, Display 문구)을 한 틱씩 이어간다."""
         now = time.time()
@@ -748,6 +823,10 @@ class Controller:
         """메인 루프에서 매번 호출한다."""
         self._finish_if_done()
         self.update_hw_checks()
+        self.update_hw_refresh()
+        self.collector.tick()
+        self.trainer.tick()
+        self.update_studio_preview()
 
         # 1) 센서 읽기
         env = self.hw.read_env()

@@ -72,6 +72,13 @@ class Vision:
         time.sleep(1)   # 카메라 노출 안정화
 
     # ------------------------------------------------------ 딥러닝 모델
+    def reload_model(self):
+        """학습이 끝난 새 모델을 다음 분류부터 쓰게 한다 (프로그램을 다시 켤 필요 없다)."""
+        self._model = None
+        self._class_map = None
+        self._preprocess = None
+        self._model_tried = False
+
     def _load_model(self):
         """학습된 분류기를 지연 로드한다 (한 번만 시도).
 
@@ -174,7 +181,7 @@ class Vision:
         """작물 분류. 딥러닝 모델이 있으면 그게 주 수단, 없거나 확신이 낮으면 HSV 폴백.
 
         [중요] 대회 규정상 실제 작물을 반입할 수 없어 레고 브릭으로 대신한다.
-        시연 작물은 상추/옥수수/당근 3종으로 확정됐다 (profiles.py 참고).
+        시연 작물은 상추/옥수수/당근 3종이다 (profiles.py 참고).
         """
         if not self._model_tried:
             self._load_model()
@@ -315,6 +322,9 @@ class MockVision:
     def release(self):
         pass
 
+    def reload_model(self):
+        pass    # 모의 비전은 모델이 없다
+
     def set_crop(self, crop):
         """Mock에서 작물을 바꿔 보는 용도 (--mock으로 웹 UI를 개발할 때)."""
         self._crop = crop
@@ -348,6 +358,16 @@ class MockVision:
     def save_snapshot(self, frame, path):
         """웹캠이 없는 모의 모드라 실제 사진은 저장하지 않는다."""
         return False
+
+
+def read_class_map(path=None):
+    """저장된 모델이 아는 클래스 목록. 모델이 없으면 None. torch를 불러오지 않는 가벼운 읽기."""
+    try:
+        with open(path or CLASS_MAP_PATH, "r", encoding="utf-8") as f:
+            names = json.load(f)
+        return names if isinstance(names, list) else None
+    except (OSError, ValueError):
+        return None
 
 
 def build_vision(mock=False, cam_index=0, crop="lettuce", cycle=0):

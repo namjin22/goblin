@@ -8,12 +8,17 @@ data/<클래스이름>/*.jpg 를 모아서 학습한다.
 
 사용법
   python train_crop_model.py
+  python train_crop_model.py --epochs 30 --data-dir tmp_data --model-dir tmp_models   (시험용)
+
+웹의 "AI 학습" 화면도 이 스크립트를 그대로 돌린다. 그때 서버가 읽을 수 있게 진행 상황을
+"[progress] 단계 현재/전체" 한 줄씩 출력한다.
 
 결과물
   models/crop_classifier.pt   학습된 모델 전체(백본+헤드)의 state_dict
   models/class_map.json       분류기 출력 인덱스 -> 클래스 이름 매핑
 """
 
+import argparse
 import json
 import os
 import random
@@ -35,6 +40,11 @@ VAL_RATIO = 0.2
 EPOCHS = 150
 LR = 1e-2
 SEED = 42
+
+
+def progress(phase, done, total):
+    """웹 화면이 읽는 진행 상황 한 줄. flush하지 않으면 파이프에서 한꺼번에 나온다."""
+    print("[progress] %s %d/%d" % (phase, done, total), flush=True)
 
 
 def discover_classes():
@@ -94,6 +104,7 @@ def load_embeddings(model, classes):
     """모든 이미지를 증강 -> 전처리 -> 임베딩 캐싱. (X, y) 반환."""
     X, y = [], []
     for label_idx, name in enumerate(classes):
+        progress("embed", label_idx, len(classes))
         class_dir = os.path.join(DATA_DIR, name)
         files = [f for f in os.listdir(class_dir) if f.lower().endswith(".jpg")]
         n_variants = None
@@ -109,7 +120,8 @@ def load_embeddings(model, classes):
                 X.append(emb.squeeze(0))
                 y.append(label_idx)
         print("  %-12s %3d장 원본 -> %3d장 (증강 포함, %d배)"
-              % (name, len(files), len(files) * (n_variants or 0), n_variants or 0))
+              % (name, len(files), len(files) * (n_variants or 0), n_variants or 0), flush=True)
+    progress("embed", len(classes), len(classes))
     return torch.stack(X), torch.tensor(y, dtype=torch.long)
 
 
@@ -126,20 +138,34 @@ def stratified_split(y, val_ratio, seed):
     return train_idx, val_idx
 
 
+def parse_args():
+    p = argparse.ArgumentParser(description="작물 분류 모델 학습")
+    p.add_argument("--data-dir", default=DATA_DIR)
+    p.add_argument("--model-dir", default=MODEL_DIR)
+    p.add_argument("--epochs", type=int, default=EPOCHS)
+    return p.parse_args()
+
+
 def main():
+    global DATA_DIR, MODEL_DIR, MODEL_PATH, CLASS_MAP_PATH, EPOCHS
+    args = parse_args()
+    DATA_DIR, MODEL_DIR, EPOCHS = args.data_dir, args.model_dir, args.epochs
+    MODEL_PATH = os.path.join(MODEL_DIR, "crop_classifier.pt")
+    CLASS_MAP_PATH = os.path.join(MODEL_DIR, "class_map.json")
+
     classes = discover_classes()
     if len(classes) < 2:
         print("data/ 아래 학습 가능한 클래스가 2개 미만이다.")
         print("python collect_data.py --crop <이름> 으로 먼저 사진을 찍을 것.")
         return 1
 
-    print("학습 클래스 (%d개): %s" % (len(classes), ", ".join(classes)))
+    print("학습 클래스 (%d개): %s" % (len(classes), ", ".join(classes)), flush=True)
 
     torch.manual_seed(SEED)
     model = build_model(len(classes), pretrained=True)
     model.eval()
 
-    print("\n임베딩 캐싱 중...")
+    print("\n임베딩 캐싱 중...", flush=True)
     X, y = load_embeddings(model, classes)
     print("총 %d개 임베딩 (증강 포함)" % len(X))
 
@@ -163,25 +189,33 @@ def main():
         loss.backward()
         optimizer.step()
 
+        if (epoch + 1) % 10 == 0 or epoch == EPOCHS - 1:
+            progress("train", epoch + 1, EPOCHS)
         if (epoch + 1) % 30 == 0 or epoch == EPOCHS - 1:
             model.head.eval()
             with torch.no_grad():
                 val_acc = (model.head(X_val).argmax(1) == y_val).float().mean().item()
             print("  epoch %3d  loss %.4f  val_acc %.1f%%"
-                  % (epoch + 1, loss.item(), val_acc * 100))
+                  % (epoch + 1, loss.item(), val_acc * 100), flush=True)
 
     model.head.eval()
     with torch.no_grad():
         final_acc = (model.head(X_val).argmax(1) == y_val).float().mean().item()
 
+    # [중요] 임시 파일에 쓴 뒤 한 번에 바꿔치기한다. 저장 도중 꺼지거나 전원이 나가도
+    # 멀쩡하던 기존 모델이 반쪽짜리 파일로 덮이면 안 된다 (시연 중 모델이 깨진다).
     os.makedirs(MODEL_DIR, exist_ok=True)
-    torch.save(model.state_dict(), MODEL_PATH)
-    with open(CLASS_MAP_PATH, "w", encoding="utf-8") as f:
+    tmp_model, tmp_map = MODEL_PATH + ".tmp", CLASS_MAP_PATH + ".tmp"
+    torch.save(model.state_dict(), tmp_model)
+    with open(tmp_map, "w", encoding="utf-8") as f:
         json.dump(classes, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_model, MODEL_PATH)
+    os.replace(tmp_map, CLASS_MAP_PATH)
 
     print("\n" + "=" * 50)
     print(" 최종 검증 정확도: %.1f%%" % (final_acc * 100))
     print(" 저장 완료: %s, %s" % (MODEL_PATH, CLASS_MAP_PATH))
+    print("[result] acc=%.4f classes=%s" % (final_acc, ",".join(classes)), flush=True)
     if final_acc < 0.85:
         print(" [주의] 정확도가 낮다. 사진을 더 찍거나 다양한 각도로 다시 찍을 것.")
     print("=" * 50)

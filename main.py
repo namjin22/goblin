@@ -171,8 +171,13 @@ def main():
     # 4) 제어기
     # 소리는 MODI Speaker가 아니라 노트북에서 낸다. 모의 실행은 개발 중 시끄러우니 기본 무음.
     audio = build_audio(mute=args.mute or (mock_hw and not args.sound))
+    # [중요] 모의 비전(--mock)이 만드는 건 가짜(합성) 사진이다. 웹에서 촬영/학습을 해 보더라도
+    # 진짜 data/ models/ 에 섞이거나 진짜 모델을 덮어쓰면 안 되므로 폴더를 따로 쓴다.
+    # (--mock-hw 는 진짜 웹캠이라 진짜 폴더를 쓴다)
+    data_dir, model_dir = ("data_mock", "models_mock") if args.mock else ("data", "models")
     ctrl = Controller(hw, store, vision=vision, camera_preview=args.camera_preview,
-                      force_crop=args.force_crop, audio=audio)
+                      force_crop=args.force_crop, audio=audio,
+                      data_dir=data_dir, model_dir=model_dir)
     if args.force_crop:
         print("[주의] --force-crop %s : 카메라 인식 무시하고 항상 이 작물로 표시함 (촬영용)" % args.force_crop)
 
@@ -243,6 +248,7 @@ def main():
         except Exception:
             pass
         audio.close()
+        ctrl.shutdown()
         if hasattr(vision, "release"):
             vision.release()
 

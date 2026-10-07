@@ -16,6 +16,10 @@ log.csv
 log_mock.csv
 run.log
 growth_photos/
+# 모의 실행(--mock)에서 웹으로 촬영/학습해 본 가짜 사진과 모델 (진짜 data/ models/ 와 분리)
+data_mock/
+models_mock/
+
 # 이 기기의 환기창이 마지막으로 열렸는지 닫혔는지 (기기마다 다름)
 vent_state.json
 

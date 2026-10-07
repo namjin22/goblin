@@ -20,14 +20,20 @@ VALID_COMMANDS = {"vent_open", "vent_close", "vent_toggle", "water", "scan", "li
                   "auto_on", "auto_off", "vent_mark_open", "vent_mark_closed", "sound_test",
                   # 장치 점검 (웹 운영자 패널): 사람이 눈으로 보며 하나씩 확인한다
                   "led_test", "display_test", "jog", "vent_test", "set_roles", "flip_sign",
-                  "vent_confirm"}
+                  "vent_confirm",
+                  # AI 학습 (웹): 사진 촬영 -> 학습 -> 새 모델 적용
+                  "collect_start", "collect_stop", "data_clear", "train_start", "train_stop",
+                  "studio_ping"}
 
 # 액추에이터를 안 움직이는 명령. 모터가 도는 중(busy)에도 받아서 바로 처리한다.
 # (auto_on/off는 모터가 도는 동안 눌러도 버려지면 안 된다)
 # vent_mark_*는 모터를 돌리지 않고 "창문이 지금 실제로 열려/닫혀 있다"고 시스템에 알려주기만 한다.
 INSTANT_COMMANDS = {"scan", "light_toggle", "auto_on", "auto_off",
                     "vent_mark_open", "vent_mark_closed", "sound_test",
-                    "led_test", "display_test"}
+                    "led_test", "display_test",
+                    # 학습 관련은 모터를 안 쓰므로 환기창이 도는 중에도 받는다
+                    "collect_start", "collect_stop", "data_clear", "train_start", "train_stop",
+                    "studio_ping"}
 
 # LED는 생장등으로만 쓴다. 상태색 표시는 앱이 담당한다.
 # light_toggle은 수동 개입("조작은 언제든 할 수 있다") — 자동 로직(update_grow_light)이
@@ -75,6 +81,11 @@ class Store:
             # 믿고 있을 뿐이다. vent_assumed가 True면 아직 사람이 확인하지 않은 추정값이다
             # (재조립/재시작 직후). 웹 화면이 "맞는지 확인해 주세요"를 띄운다.
             "vent_assumed": True,
+            "collect": None,          # 학습 사진 촬영 진행 {active, crop, count, target}
+            "train": None,            # AI 학습 진행 {running, pct, phase, accuracy, ...}
+            "dataset": None,          # 클래스별 학습 사진 장수 {"carrot": 15, ...}
+            "model_classes": None,    # 지금 쓰는 모델이 아는 클래스 (없으면 None)
+            "camera_real": False,     # 진짜 웹캠인가 (모의 화면이 아닌가)
             "hw": None,               # 하드웨어 구성(모터 목록/역할/방향/ready). 웹의 장치 점검 화면용
             "hw_error": None,         # 메인 루프 tick이 실패했을 때의 마지막 오류 (정상이면 None)
             "vent_open": False,

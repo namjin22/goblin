@@ -24,6 +24,7 @@ from controller import (GROWTH_PHOTO_DIR, HEAT_DANGER_TEMP, LIGHT_HYSTERESIS,
                         RAIN_HUMIDITY_THRESHOLD)
 from profiles import CROP_PROFILES, get_profile
 from state import INSTANT_COMMANDS, VALID_COMMANDS
+from training import valid_classes
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 WEB_DIST = os.path.join(BASE_DIR, "web", "dist")   # 새 웹 UI (npm run build 결과물)
@@ -51,7 +52,7 @@ def _validate_args(cmd, args, snap):
     웹 화면 말고도 같은 네트워크의 누구나 이 API를 부를 수 있으므로, 모터를 돌리는
     인자는 반드시 서버에서 다시 확인한다 (알려진 모터 ID만, 각도는 작게).
     """
-    needs_args = {"jog", "set_roles", "flip_sign"}
+    needs_args = {"jog", "set_roles", "flip_sign", "collect_start", "data_clear"}
     if cmd not in needs_args:
         return None if args is None else "이 명령은 인자를 받지 않아요"
     if not isinstance(args, dict):
@@ -81,6 +82,13 @@ def _validate_args(cmd, args, snap):
     elif cmd == "flip_sign":
         if args.get("which") not in ("a", "b"):
             return "a 또는 b여야 해요"
+    elif cmd in ("collect_start", "data_clear"):
+        if args.get("crop") not in valid_classes():
+            return "알 수 없는 작물이에요"
+        target = args.get("target")
+        if cmd == "collect_start" and target is not None:
+            if not (isinstance(target, int) and not isinstance(target, bool) and 5 <= target <= 60):
+                return "사진 장수는 5~60장이어야 해요"
     return None
 
 
@@ -224,6 +232,12 @@ def create_app(store, port=5000):
             "auto_mode": snap.get("auto_mode"),
             "sound_on": snap.get("sound_on"),            # 노트북에서 소리가 나는지
             "hw": snap.get("hw"),                        # 모터 목록/역할/방향/ready (장치 점검 화면용)
+            # --- AI 학습 화면용 ---
+            "collect": snap.get("collect"),              # 사진 촬영 진행
+            "train": snap.get("train"),                  # 학습 진행/결과
+            "dataset": snap.get("dataset"),              # 클래스별 사진 장수
+            "model_classes": snap.get("model_classes"),  # 지금 모델이 아는 클래스
+            "camera_real": snap.get("camera_real"),      # 진짜 웹캠인가
             "vent_ready": (snap.get("hw") or {}).get("vent_ready", True),
             "vent_roles_ok": (snap.get("hw") or {}).get("vent_roles_ok", True),
             "vent_verified": (snap.get("hw") or {}).get("vent_verified", True),

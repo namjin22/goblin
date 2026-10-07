@@ -213,6 +213,10 @@ class BaseHardware:
         """사람이 시험 구동으로 방향이 맞는 걸 확인했다. 이제부터 환기창을 움직여도 된다."""
         raise NotImplementedError
 
+    def refresh(self):
+        """모듈 구성이 바뀌었으면(늦게 인식된 모터 등) 역할을 다시 정하고 True. 아니면 False."""
+        return False
+
 
 # --------------------------------------------------------- 실물 하드웨어
 class ModiHardware(BaseHardware):
@@ -289,6 +293,7 @@ class ModiHardware(BaseHardware):
         # 둘 중 하나라도 정해지지 않았으면 문이 반만 움직이거나 걸릴 수 있어서
         # 환기창은 아예 움직이지 않는다(vent_ready=False). 예전에는 여기서 프로그램이
         # 죽었지만, 그러면 웹에서 역할을 정할 방법이 없어서 "움직이지 않는 상태"로 시작한다.
+        self._motor_count = len(motors)
         if not self.vent_ready:
             print("[HW] 경고: 환기창 모터 역할이 정해지지 않았다 (인식된 모터 %d개). "
                   "환기창은 움직이지 않는다. 웹 운영자 > 장치 점검에서 정할 것." % len(motors))
@@ -371,9 +376,12 @@ class ModiHardware(BaseHardware):
         motors = self.bundle.motors
         explicit = any(x is not None for x in
                        (VENT_MOTOR_A_ID, VENT_MOTOR_B_ID, SPRINKLER_MOTOR_ID))
-        # [중요] 옛 순서(INDEX) 값은 모터가 3개일 때 잰 것이다. 모터 개수가 달라졌는데
-        # 순서만 믿으면 엉뚱한 모터를 환기창으로 착각한다 - 그때는 사람이 정하게 한다.
-        legacy = not explicit and len(motors) >= 3
+        # [중요] 옛 순서(INDEX) 값은 지난 조립 때 잰 값이라, 다시 조립하거나 케이블을 꽂으면 어긋난다.
+        # 어긋난 순서를 믿으면 스프링클러에 보내는 "연속 회전" 명령이 환기창 모터로 가서 문이 걸릴 수
+        # 있다(2026-10-07 재조립 때 모터 순서가 달라졌는지 확인할 방법이 없었다). 그래서 설정(ID)이
+        # 없으면 아무 모터도 믿지 않는다 - 웹 운영자 > 장치 점검에서 눈으로 확인해 정하게 한다.
+        # (INDEX 상수는 옛 기록과 hwtest.py의 참고용으로만 남겨 둔다)
+        legacy = False
 
         def find(motor_id, index):
             if motor_id is not None:
@@ -389,6 +397,19 @@ class ModiHardware(BaseHardware):
         if s is not None and s in (a, b):
             s = None
         self.vent_motor_a, self.vent_motor_b, self.sprinkler_motor = a, b, s
+
+    def refresh(self):
+        """모듈 인식은 비동기라 일부 모터가 시작 몇 초 뒤에 올라온다(2026-10-07 실제로 3번째 모터가
+        '초기화 완료' 뒤에 잡혔다). 시작 때 한 번만 역할을 정하면 그 모터를 영영 놓치므로,
+        모터 개수가 바뀌면 역할을 다시 정한다."""
+        count = len(self.bundle.motors)
+        if count == getattr(self, "_motor_count", count):
+            return False
+        self._motor_count = count
+        print("[HW] 모터가 %d개로 바뀌었다: %s" % (
+            count, ", ".join("0x%X" % m.id for m in self.bundle.motors)))
+        self._resolve_roles()
+        return True
 
     def describe(self):
         def mid(m):
