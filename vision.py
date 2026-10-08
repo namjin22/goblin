@@ -57,10 +57,18 @@ class Vision:
         # [중요] Windows 기본 백엔드(MSMF)는 여는 데 20초 가까이 걸리고,
         # 촬영 중간에 "can't grab frame" 에러로 프레임을 계속 못 읽는 경우가
         # 실측됐다. DirectShow(CAP_DSHOW)가 훨씬 빠르고(7초대) 안정적이었다.
-        backend = cv2.CAP_DSHOW if sys.platform.startswith("win") else 0
-        self.cap = cv2.VideoCapture(cam_index, backend)
-        if not self.cap.isOpened():
-            raise RuntimeError("웹캠을 열 수 없다. cam_index를 확인할 것.")
+        self._backend = cv2.CAP_DSHOW if sys.platform.startswith("win") else 0
+        self._cam_index = cam_index
+        self.cap = None
+        self._last_open_try = 0.0
+        self._read_fails = 0
+        # [중요] 못 열어도 죽거나 가짜 화면으로 바꾸지 않는다. 윈도우 카메라 앱 같은 다른
+        # 프로그램이 카메라를 잡고 있으면 못 여는데, 예전에는 그때 조용히 "가짜 화면(Mock)"으로
+        # 바꿔서 실물 운영 중에 가짜 브릭이 보였다(2026-10-08 부스). 이제는 연결이 안 됐다고
+        # 알리고(camera_ok=False), 카메라가 풀리면 서버를 껐다 켜지 않아도 저절로 다시 연결한다.
+        if not self._try_open():
+            print("[VISION] 웹캠(%d번)을 아직 열 수 없다. 다른 프로그램(윈도우 카메라 앱 등)이 "
+                  "쓰고 있는지 확인할 것. 계속 다시 시도한다." % cam_index)
         self.calib = self.load_calib()
         self._model = None
         self._class_map = None
@@ -69,7 +77,25 @@ class Vision:
         # 마지막 분류의 클래스별 확률 {"lettuce": 0.93, ...}. 웹 화면의 확률 막대용.
         # 모델이 없거나 추론이 실패해 HSV 폴백으로 갔으면 None.
         self.last_probs = None
-        time.sleep(1)   # 카메라 노출 안정화
+
+    # ------------------------------------------------------ 카메라 연결
+    def _try_open(self):
+        self._last_open_try = time.time()
+        cap = self.cv2.VideoCapture(self._cam_index, self._backend)
+        if cap is not None and cap.isOpened():
+            self.cap = cap
+            self._read_fails = 0
+            time.sleep(1)   # 카메라 노출 안정화
+            print("[VISION] 웹캠(%d번) 연결됨" % self._cam_index)
+            return True
+        if cap is not None:
+            cap.release()
+        self.cap = None
+        return False
+
+    @property
+    def camera_ok(self):
+        return self.cap is not None and self.cap.isOpened()
 
     # ------------------------------------------------------ 딥러닝 모델
     def reload_model(self):
@@ -136,8 +162,20 @@ class Vision:
 
     # ------------------------------------------------------ 캡처
     def capture(self):
+        """프레임 한 장. 카메라가 없거나 못 읽으면 None (4초마다 다시 연결을 시도한다)."""
+        if not self.camera_ok:
+            if time.time() - self._last_open_try < 4.0 or not self._try_open():
+                return None
         ok, frame = self.cap.read()
-        return frame if ok else None
+        if ok:
+            self._read_fails = 0
+            return frame
+        # 계속 못 읽으면(케이블이 빠짐, 다른 프로그램이 가져감) 연결을 버리고 다시 열어 본다
+        self._read_fails += 1
+        if self._read_fails >= 10:
+            self.cap.release()
+            self.cap = None
+        return None
 
     def release(self):
         if self.cap:
@@ -375,6 +413,7 @@ def build_vision(mock=False, cam_index=0, crop="lettuce", cycle=0):
         return MockVision(crop=crop, cycle=cycle)
     try:
         return Vision(cam_index=cam_index)
-    except Exception as e:
-        print("[VISION] 웹캠 초기화 실패, Mock으로 대체한다:", e)
+    except ImportError as e:
+        # opencv 자체가 없을 때만 가짜로 대체한다 (웹캠을 못 여는 것과는 다른 문제)
+        print("[VISION] opencv를 쓸 수 없어 Mock으로 대체한다:", e)
         return MockVision(crop=crop)

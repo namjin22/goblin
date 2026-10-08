@@ -25,9 +25,9 @@ export function preflight(state, staleSec, profiles = []) {
   );
 
   items.push(
-    state.has_camera_frame
+    state.has_camera_frame && state.camera_ok !== false
       ? { key: "cam", level: "ok", label: "카메라 화면", detail: "받는 중" }
-      : { key: "cam", level: "warn", label: "카메라 화면", detail: "아직 못 받았어요" }
+      : { key: "cam", level: "fail", label: "카메라 화면", detail: "연결되지 않았어요. 다른 프로그램(카메라 앱 등)이 쓰는지 확인하세요" }
   );
 
   // 모델이 모르는 작물이 있으면 그 작물은 절대 인식되지 않는다 (예: 작물을 바꾼 직후)

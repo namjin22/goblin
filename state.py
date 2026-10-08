@@ -20,7 +20,7 @@ VALID_COMMANDS = {"vent_open", "vent_close", "vent_toggle", "water", "scan", "li
                   "auto_on", "auto_off", "vent_mark_open", "vent_mark_closed", "sound_test",
                   # 장치 점검 (웹 운영자 패널): 사람이 눈으로 보며 하나씩 확인한다
                   "led_test", "display_test", "jog", "vent_test", "set_roles", "flip_sign",
-                  "vent_confirm",
+                  "vent_confirm", "env_baseline", "env_baseline_clear",
                   # AI 학습 (웹): 사진 촬영 -> 학습 -> 새 모델 적용
                   "collect_start", "collect_stop", "data_clear", "train_start", "train_stop",
                   "studio_ping"}
@@ -33,7 +33,7 @@ INSTANT_COMMANDS = {"scan", "light_toggle", "auto_on", "auto_off",
                     "led_test", "display_test",
                     # 학습 관련은 모터를 안 쓰므로 환기창이 도는 중에도 받는다
                     "collect_start", "collect_stop", "data_clear", "train_start", "train_stop",
-                    "studio_ping"}
+                    "studio_ping", "env_baseline", "env_baseline_clear"}
 
 # LED는 생장등으로만 쓴다. 상태색 표시는 앱이 담당한다.
 # light_toggle은 수동 개입("조작은 언제든 할 수 있다") — 자동 로직(update_grow_light)이
@@ -86,6 +86,9 @@ class Store:
             "dataset": None,          # 클래스별 학습 사진 장수 {"carrot": 15, ...}
             "model_classes": None,    # 지금 쓰는 모델이 아는 클래스 (없으면 None)
             "camera_real": False,     # 진짜 웹캠인가 (모의 화면이 아닌가)
+            "baseline": None,         # 부스의 기본(평상시) 환경 {temperature, humidity, illuminance, saved_at}
+            "baseline_busy": False,   # 기본 환경을 재는 중인가 (5초)
+            "camera_ok": True,        # 진짜 웹캠이 지금 프레임을 주는가 (False면 연결 안 됨/다른 프로그램이 사용 중)
             "hw": None,               # 하드웨어 구성(모터 목록/역할/방향/ready). 웹의 장치 점검 화면용
             "motor_fault": None,      # 명령은 갔는데 모터가 안 움직였을 때의 안내 문구 (정상이면 None)
             "hw_error": None,         # 메인 루프 tick이 실패했을 때의 마지막 오류 (정상이면 None)

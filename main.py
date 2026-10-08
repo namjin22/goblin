@@ -177,7 +177,8 @@ def main():
     data_dir, model_dir = ("data_mock", "models_mock") if args.mock else ("data", "models")
     ctrl = Controller(hw, store, vision=vision, camera_preview=args.camera_preview,
                       force_crop=args.force_crop, audio=audio,
-                      data_dir=data_dir, model_dir=model_dir)
+                      data_dir=data_dir, model_dir=model_dir,
+                      baseline_path="env_baseline_mock.json" if args.mock else "env_baseline.json")
     if args.force_crop:
         print("[주의] --force-crop %s : 카메라 인식 무시하고 항상 이 작물로 표시함 (촬영용)" % args.force_crop)
 

@@ -20,6 +20,10 @@ growth_photos/
 data_mock/
 models_mock/
 
+# 이 장소(부스)의 기본(평상시) 온습도/조도 - 장소마다 다르다
+env_baseline.json
+env_baseline_mock.json
+
 # 이 기기의 환기창이 마지막으로 열렸는지 닫혔는지 (기기마다 다름)
 vent_state.json
 

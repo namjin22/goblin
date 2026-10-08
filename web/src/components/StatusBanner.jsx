@@ -19,6 +19,12 @@ export function StatusBanner({ online, state, staleSec }) {
       icon: "info",
       text: "장치 연결이 불안정해요. USB와 전원을 확인해 주세요",
     };
+  } else if (state && state.camera_real && state.camera_ok === false) {
+    banner = {
+      tone: "bg-sun-700",
+      icon: "camera",
+      text: "카메라가 연결되지 않았어요. 다른 프로그램이 쓰고 있는지 확인해 주세요",
+    };
   } else if (state?.motor_fault) {
     banner = {
       tone: "bg-berry-700",

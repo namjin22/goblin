@@ -23,6 +23,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 from controller import (GROWTH_PHOTO_DIR, HEAT_DANGER_TEMP, LIGHT_HYSTERESIS,
                         RAIN_HUMIDITY_THRESHOLD)
 from profiles import CROP_PROFILES, get_profile
+import baseline as baseline_mod
 from state import INSTANT_COMMANDS, VALID_COMMANDS
 from training import valid_classes
 
@@ -92,14 +93,16 @@ def _validate_args(cmd, args, snap):
     return None
 
 
-def _thresholds(profile):
-    """웹 화면의 기준선 게이지에 쓰는 값. 판단 로직(controller.decide)과 같은 상수를 쓴다."""
+def _thresholds(profile, crop_key=None, baseline=None):
+    """웹 화면의 기준선 게이지에 쓰는 값. 판단 로직(controller.decide)과 같은 상수를 쓴다.
+    조도 기준은 기본 환경이 저장돼 있으면 그 평상시 밝기에 맞춘 값(baseline.light_levels)이다."""
+    min_lux, light_off = baseline_mod.light_levels(crop_key, profile, baseline)
     return {
         "vent_temp": profile["vent_temp"],
         "vent_alert_temp": profile["vent_temp"] + 3,     # decide()의 alert 경계
         "dry_limit": profile["dry_limit"],
-        "min_lux": profile["min_lux"],
-        "light_off_lux": profile["min_lux"] + LIGHT_HYSTERESIS,
+        "min_lux": min_lux,
+        "light_off_lux": light_off,
         "rain_humidity": RAIN_HUMIDITY_THRESHOLD,
         "heat_danger_temp": HEAT_DANGER_TEMP,
     }
@@ -238,6 +241,7 @@ def create_app(store, port=5000):
             "dataset": snap.get("dataset"),              # 클래스별 사진 장수
             "model_classes": snap.get("model_classes"),  # 지금 모델이 아는 클래스
             "camera_real": snap.get("camera_real"),      # 진짜 웹캠인가
+            "camera_ok": snap.get("camera_ok"),          # 지금 프레임을 받고 있는가
             "vent_ready": (snap.get("hw") or {}).get("vent_ready", True),
             "vent_roles_ok": (snap.get("hw") or {}).get("vent_roles_ok", True),
             "vent_verified": (snap.get("hw") or {}).get("vent_verified", True),
@@ -247,7 +251,9 @@ def create_app(store, port=5000):
             "motor_fault": snap.get("motor_fault"),      # 모터가 안 움직였을 때의 안내            # 장치 통신 오류 (정상이면 null)
             # 메인 루프가 멈췄는지(updated_at이 오래됨)를 브라우저 시계와 무관하게 판단하려고
             "server_time": time.time(),
-            "thresholds": _thresholds(profile),
+            "thresholds": _thresholds(profile, snap.get("crop_key"), snap.get("baseline")),
+            "baseline": snap.get("baseline"),            # 부스 기본(평상시) 환경 또는 null
+            "baseline_busy": snap.get("baseline_busy"),
             "has_camera_frame": store.get_camera_frame() is not None,
             "message": snap["message"],          # 큰 글씨 한 줄
             "short": snap.get("short"),          # Display에 나가는 짧은 단어
@@ -310,7 +316,7 @@ def create_app(store, port=5000):
         """모든 작물의 기준값. "같은 장치, 작물마다 다른 판단"을 나란히 보여주는 화면용."""
         return jsonify({"items": [
             {"key": key, "name": p["name"], "note": p.get("note"),
-             "thresholds": _thresholds(p)}
+             "thresholds": _thresholds(p, key, store.get("baseline"))}
             for key, p in CROP_PROFILES.items()
         ]})
 

@@ -74,6 +74,35 @@ export function OperatorDrawer({ open, onClose, state, send, staleSec, profiles 
             <HardwareCheck state={state} send={send} />
           </Section>
 
+          <Section title="기본 환경">
+            <div className="rounded-3xl bg-paper px-5 py-5">
+              {state.baseline ? (
+                <p className="text-[19px] font-bold tabular-nums text-ink">
+                  {state.baseline.temperature.toFixed(1)}°C · 습도 {Math.round(state.baseline.humidity)}% · 조도{" "}
+                  {Math.round(state.baseline.illuminance)}
+                </p>
+              ) : (
+                <p className="text-[18px] font-bold text-ink-soft">아직 저장 안 됨</p>
+              )}
+              <p className="mt-1 text-[16px] text-ink-soft">평상시 환경이에요. 건조도와 생장등이 여기에 맞춰져요</p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Btn
+                  tone="primary"
+                  icon="thermo"
+                  disabled={state.baseline_busy}
+                  onClick={() => send("env_baseline", "5초 동안 재요. 평소 상태로 두세요")}
+                >
+                  {state.baseline_busy ? "재는 중…" : "지금을 기본으로"}
+                </Btn>
+                {state.baseline && (
+                  <Btn disabled={state.baseline_busy} onClick={() => send("env_baseline_clear", "기본 환경을 지웠어요")}>
+                    지우기
+                  </Btn>
+                )}
+              </div>
+            </div>
+          </Section>
+
           <Section title="창문이 지금…">
             <div className={`rounded-3xl px-5 py-5 ${assumed ? "bg-sun-100 ring-2 ring-sun-500/40" : "bg-paper"}`}>
               <p className="text-[18px] font-bold text-ink">

@@ -25,6 +25,7 @@ from profiles import CROP_PROFILES, get_profile
 from audio import NullAudio
 from state import INSTANT_COMMANDS
 from training import COLLECT_TARGET, DATA_DIR, Collector, Trainer, count_images
+import baseline as baseline_mod
 from vision import read_class_map
 
 def josa(word, with_batchim, without_batchim):
@@ -143,7 +144,8 @@ class Controller:
     """센서값을 판단하고 액추에이터를 움직인다. 메인 루프에서만 쓴다."""
 
     def __init__(self, hw, store, vision=None, camera_preview=False, force_crop=None,
-                 audio=None, data_dir=DATA_DIR, model_dir="models", train_args=None, train_root=None):
+                 audio=None, data_dir=DATA_DIR, model_dir="models", train_args=None, train_root=None,
+                 baseline_path=baseline_mod.PATH):
         self.hw = hw
         # 소리는 MODI Speaker가 아니라 노트북에서 낸다 (audio.py 참고). 없으면 무음.
         self.audio = audio if audio is not None else NullAudio()
@@ -198,6 +200,12 @@ class Controller:
         self._last_hw_refresh = 0.0
 
         self._publish_hw()
+
+        # --- 부스 기본 환경 (평상시 습도/조도 기준) ---
+        self._baseline_path = baseline_path
+        self.baseline = baseline_mod.load(baseline_path)
+        self._baseline_run = None        # 재는 중이면 {"until": 시각, "samples": [...]}
+        store.update(baseline=self.baseline, baseline_busy=False)
 
         # --- AI 학습 (웹) ---
         self._studio_until = 0.0
@@ -398,7 +406,24 @@ class Controller:
             return max(0.0, lux - self._light_boost)
         return lux
 
-    def update_grow_light(self, lux, profile):
+    def update_baseline_capture(self, env):
+        """운영자가 "지금 환경을 기본으로"를 눌렀으면 CAPTURE_SECONDS 동안 센서값을 모아 저장한다."""
+        run = self._baseline_run
+        if not run:
+            return
+        run["samples"].append(dict(env))
+        if time.time() < run["until"]:
+            return
+        self._baseline_run = None
+        self.baseline = baseline_mod.from_samples(run["samples"])
+        baseline_mod.save(self.baseline, self._baseline_path)
+        self.store.update(baseline=self.baseline, baseline_busy=False)
+        self.store.add_history(
+            "baseline", "기본 환경을 저장했어요 (%.1f°C · 습도 %.0f%% · 조도 %.0f)" % (
+                self.baseline["temperature"], self.baseline["humidity"], self.baseline["illuminance"]))
+        self.audio.play("recognized")
+
+    def update_grow_light(self, lux, profile, crop_key=None):
         """주변이 어두우면 생장등을 켠다."""
         if lux is None:
             return
@@ -417,8 +442,8 @@ class Controller:
             return      # 아직 유지 시간 - 건드리지 않는다
 
         ambient = self.ambient_lux(lux)
-        on_below = profile["min_lux"]                      # 이보다 어두우면 켠다
-        off_above = profile["min_lux"] + LIGHT_HYSTERESIS  # 이보다 밝으면 끈다
+        # 기본 환경이 저장돼 있으면 그 장소의 평상시 밝기에 비례해서, 없으면 profile의 옛 절대값으로
+        on_below, off_above = baseline_mod.light_levels(crop_key, profile, self.baseline)
 
         if not self._light_on and ambient < on_below:
             self._lux_before_light = lux
@@ -483,6 +508,15 @@ class Controller:
 
         self._last_scan = time.time()
         frame = self.vision.capture()
+        # 카메라가 프레임을 못 주면 "연결 안 됨"을 알리고 낡은 화면을 지운다 (멈춘 사진이
+        # 살아 있는 영상처럼 보이면 안 된다)
+        if self.store.get("camera_ok") != (frame is not None):
+            self.store.update(camera_ok=frame is not None)
+            if frame is None:
+                self.store.set_camera_frame(None)
+                self.store.add_history("camera", "카메라가 연결되지 않았어요")
+            else:
+                self.store.add_history("camera", "카메라가 연결됐어요")
         if frame is None:
             return
 
@@ -709,6 +743,20 @@ class Controller:
         if cmd == "sound_test":
             self.audio.play("test")
             return True
+        if cmd == "env_baseline":
+            if self._baseline_run:
+                return False
+            self._baseline_run = {"until": time.time() + baseline_mod.CAPTURE_SECONDS, "samples": []}
+            self.store.update(baseline_busy=True)
+            self.store.add_history("baseline", "기본 환경을 재는 중이에요 (%d초)" % baseline_mod.CAPTURE_SECONDS)
+            return True
+        if cmd == "env_baseline_clear":
+            self._baseline_run = None
+            self.baseline = None
+            baseline_mod.clear(self._baseline_path)
+            self.store.update(baseline=None, baseline_busy=False)
+            self.store.add_history("baseline", "기본 환경을 지웠어요 (옛 기준으로 돌아갔어요)")
+            return True
         if cmd == "studio_ping":
             self._studio_until = time.time() + STUDIO_HOLD
             return True
@@ -880,7 +928,7 @@ class Controller:
             temperature=env["temperature"],
             humidity=env["humidity"],
             illuminance=env["illuminance"],
-            dryness=humidity_to_dryness(env["humidity"]),
+            dryness=baseline_mod.dryness(env["humidity"], self.baseline),
         )
 
         # 2) 주기적 촬영 (분류) + (기본 꺼짐) 실시간 미리보기 프레임
@@ -895,7 +943,8 @@ class Controller:
         self.store.update(level=level, message=message, short=short, reason=reason)
 
         # 4) 출력
-        self.update_grow_light(env["illuminance"], profile)
+        self.update_baseline_capture(env)
+        self.update_grow_light(env["illuminance"], profile, snap.get("crop_key"))
         self.render_display(snap.get("crop_name", "확인 중"), short)
         self.update_heat_alarm(env["temperature"])
         self.render_sound(level)
