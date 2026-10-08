@@ -88,6 +88,9 @@ CONFIG_PATH = "hw_config.json"
 JOG_MAX_DEG = 30
 JOG_SPEED = 20
 
+# 시작할 때 설정된 모터가 다 잡히기를 최대 이만큼(초) 기다린다
+MODULE_WAIT = 12.0
+
 
 def load_config():
     try:
@@ -217,6 +220,10 @@ class BaseHardware:
         """모듈 구성이 바뀌었으면(늦게 인식된 모터 등) 역할을 다시 정하고 True. 아니면 False."""
         return False
 
+    def motor_angle(self, motor_id):
+        """모터의 현재 엔코더 각도(0~360). 읽을 수 없으면 None. 실제로 움직였는지 확인하는 데 쓴다."""
+        return None
+
 
 # --------------------------------------------------------- 실물 하드웨어
 class ModiHardware(BaseHardware):
@@ -251,6 +258,16 @@ class ModiHardware(BaseHardware):
             )
         else:
             self.bundle = modi_plus.MODIPlus()
+
+        # [중요] 모듈 인식은 비동기라 일부가 몇 초 늦게 올라온다. 모터가 1개만 잡힌 "반쪽 초기화"
+        # 상태로 출발하면 그 뒤에 잡힌 모듈들이 제어되지 않는 일이 실제로 있었다(2026-10-08 부스:
+        # 입력(센서)은 읽히는데 모터/LED/화면이 전부 안 움직였고, 직접 연결하면 멀쩡했다).
+        # 그래서 설정에 있는 모터가 다 보일 때까지 잠깐 기다린 뒤 시작한다.
+        apply_config()
+        expected = len([x for x in (VENT_MOTOR_A_ID, VENT_MOTOR_B_ID, SPRINKLER_MOTOR_ID) if x is not None])
+        deadline = time.time() + MODULE_WAIT
+        while len(self.bundle.motors) < expected and time.time() < deadline:
+            time.sleep(0.5)
 
         print("[HW] 연결된 모듈:", self.bundle.modules)
 
@@ -398,6 +415,15 @@ class ModiHardware(BaseHardware):
             s = None
         self.vent_motor_a, self.vent_motor_b, self.sprinkler_motor = a, b, s
 
+    def motor_angle(self, motor_id):
+        motor = next((m for m in self.bundle.motors if m.id == motor_id), None)
+        if motor is None:
+            return None
+        try:
+            return int(motor.angle)
+        except Exception:
+            return None
+
     def refresh(self):
         """모듈 인식은 비동기라 일부 모터가 시작 몇 초 뒤에 올라온다(2026-10-07 실제로 3번째 모터가
         '초기화 완료' 뒤에 잡혔다). 시작 때 한 번만 역할을 정하면 그 모터를 영영 놓치므로,
@@ -490,6 +516,15 @@ class MockHardware(BaseHardware):
         self._signs = {"a": -1, "b": 1}
         self._verified = True      # 모의 실행은 기본으로 확인된 상태 (set_roles/flip_sign 후엔 False)
         self.jogs = []   # 테스트가 확인할 수 있게 시험 구동 기록을 남긴다
+        self._angles = {i: 100 for i in self._motor_ids}
+        self.stuck = set()   # 여기 든 모터는 명령을 받아도 안 움직인다 (고장 흉내, 테스트용)
+
+    def _turn(self, motor_id, delta):
+        if motor_id is not None and motor_id not in self.stuck:
+            self._angles[motor_id] = (self._angles[motor_id] + delta) % 360
+
+    def motor_angle(self, motor_id):
+        return self._angles.get(motor_id)
 
     @property
     def vent_roles_ok(self):
@@ -518,7 +553,9 @@ class MockHardware(BaseHardware):
     def jog_motor(self, motor_id, delta, speed=JOG_SPEED):
         if motor_id not in self._motor_ids:
             raise HardwareError("그 모터를 찾을 수 없다: %r" % (motor_id,))
-        self.jogs.append((motor_id, max(-JOG_MAX_DEG, min(JOG_MAX_DEG, int(delta)))))
+        d = max(-JOG_MAX_DEG, min(JOG_MAX_DEG, int(delta)))
+        self.jogs.append((motor_id, d))
+        self._turn(motor_id, d)
 
     def set_roles(self, vent_a, vent_b, sprinkler):
         chosen = [x for x in (vent_a, vent_b, sprinkler) if x is not None]
@@ -590,9 +627,13 @@ class MockHardware(BaseHardware):
 
     def open_vent(self, speed=50):
         self._vent_open = True
+        self._turn(self._roles["vent_a"], self._signs["a"] * VENT_ROTATION_DEG)
+        self._turn(self._roles["vent_b"], self._signs["b"] * VENT_ROTATION_DEG)
 
     def close_vent(self, speed=50):
         self._vent_open = False
+        self._turn(self._roles["vent_a"], -self._signs["a"] * VENT_ROTATION_DEG)
+        self._turn(self._roles["vent_b"], -self._signs["b"] * VENT_ROTATION_DEG)
 
     def set_sprinkler(self, speed):
         if speed > 0 and self._sprinkler == 0:

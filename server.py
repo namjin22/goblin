@@ -243,7 +243,8 @@ def create_app(store, port=5000):
             "vent_verified": (snap.get("hw") or {}).get("vent_verified", True),
             "sprinkler_ready": (snap.get("hw") or {}).get("sprinkler_ready", True),
             "vent_assumed": snap.get("vent_assumed"),    # True면 창문 상태가 사람이 확인 안 된 추정값
-            "hw_error": snap.get("hw_error"),            # 장치 통신 오류 (정상이면 null)
+            "hw_error": snap.get("hw_error"),
+            "motor_fault": snap.get("motor_fault"),      # 모터가 안 움직였을 때의 안내            # 장치 통신 오류 (정상이면 null)
             # 메인 루프가 멈췄는지(updated_at이 오래됨)를 브라우저 시계와 무관하게 판단하려고
             "server_time": time.time(),
             "thresholds": _thresholds(profile),

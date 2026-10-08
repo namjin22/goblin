@@ -19,6 +19,12 @@ export function StatusBanner({ online, state, staleSec }) {
       icon: "info",
       text: "장치 연결이 불안정해요. USB와 전원을 확인해 주세요",
     };
+  } else if (state?.motor_fault) {
+    banner = {
+      tone: "bg-berry-700",
+      icon: "info",
+      text: `${state.motor_fault}. 전원과 연결을 확인해 주세요`,
+    };
   } else if (state && staleSec > STALE_AFTER_SEC) {
     banner = {
       tone: "bg-sun-700",

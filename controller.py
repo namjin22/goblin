@@ -230,6 +230,44 @@ class Controller:
         if frame is not None:
             self._publish_preview(frame)
 
+    # ------------------------------------------------------ 모터가 실제로 움직였는지 확인
+    # 명령을 보냈다고 모터가 움직인 건 아니다(전원 부족, 케이블, 반쪽 초기화...). 서버가 엔코더
+    # 각도를 읽어서 스스로 확인하고, 안 움직였으면 화면에 알린다. 눈으로 보기 전에 원인을 좁힌다.
+    @staticmethod
+    def _angle_diff(before, after):
+        return (after - before + 180) % 360 - 180
+
+    def _angles(self, ids):
+        read = getattr(self.hw, "motor_angle", None)
+        return {i: read(i) for i in ids if i is not None} if read else {}
+
+    def _vent_expected(self, opening):
+        """열기/닫기에서 각 환기창 모터가 돌아야 하는 각도 {모터ID: 도}."""
+        d = self.hw.describe()
+        r, sg, deg = d["roles"], d["signs"], d["rotation_deg"]
+        k = 1 if opening else -1
+        return {r["vent_a"]: k * sg["a"] * deg, r["vent_b"]: k * sg["b"] * deg}
+
+    def _verify_motion(self, label, before, expected):
+        """before(명령 전 각도)와 지금 각도를 비교한다. 못 읽는 모터는 판단하지 않는다."""
+        stuck = []
+        for motor_id, want in expected.items():
+            b = before.get(motor_id)
+            read = getattr(self.hw, "motor_angle", None)
+            a = read(motor_id) if read else None
+            if b is None or a is None:
+                continue
+            moved = self._angle_diff(b, a)
+            if abs(moved) < max(8, abs(want) * 0.4):      # 기대한 만큼의 40%도 안 돌았다
+                stuck.append("0x%X" % motor_id)
+        if stuck:
+            self.store.update(motor_fault="%s 모터(%s)가 안 움직였어요" % (label, ", ".join(stuck)))
+            self.store.add_history("motor_fault", "%s 모터가 안 움직였어요: %s" % (label, ", ".join(stuck)))
+            self.audio.play("alert")
+        elif self.store.get("motor_fault"):
+            self.store.update(motor_fault=None)
+            self.store.add_history("motor_ok", "모터가 다시 정상으로 움직였어요")
+
     def _publish_hw(self):
         """하드웨어 구성(모터 목록/역할/방향/ready)을 웹에 알린다. 바뀔 때만 부르면 된다."""
         try:
@@ -292,22 +330,28 @@ class Controller:
         # 돌아올 수 없게 됨) - 그래서 "닫혀 있을 때만" 열도록 막는다.
         if self.busy or self.store.get("vent_open") or not self.vent_ready:
             return False
+        expected = self._vent_expected(opening=True)
+        before = self._angles(expected)
         self.hw.open_vent()
         self.store.update(vent_open=True)
         self._save_vent_state()
         self.store.add_history("vent_open", "창문을 열었습니다")
-        self._start_action("vent_open", VENT_DURATION)
+        self._start_action("vent_open", VENT_DURATION,
+                           on_finish=lambda: self._verify_motion("창문", before, expected))
         return True
 
     def close_vent(self):
         # 같은 이유로 "열려 있을 때만" 닫는다.
         if self.busy or not self.store.get("vent_open") or not self.vent_ready:
             return False
+        expected = self._vent_expected(opening=False)
+        before = self._angles(expected)
         self.hw.close_vent()
         self.store.update(vent_open=False)
         self._save_vent_state()
         self.store.add_history("vent_close", "창문을 닫았습니다")
-        self._start_action("vent_close", VENT_DURATION)
+        self._start_action("vent_close", VENT_DURATION,
+                           on_finish=lambda: self._verify_motion("창문", before, expected))
         return True
 
     def toggle_vent(self):
@@ -722,13 +766,14 @@ class Controller:
 
         if cmd == "jog":
             motor_id, delta = args.get("motor_id"), int(args.get("delta", 20))
+            before = self._angles([motor_id])
             try:
                 self.hw.jog_motor(motor_id, delta)
             except Exception as e:
                 self.store.add_history("hw_check", "모터 점검 실패: %s" % e)
                 return False
-            # 살짝 돌렸다가 같은 만큼 되돌려서 제자리로 돌아오게 한다
-            self._jog_back = (motor_id, -delta, now + JOG_HOLD)
+            # 살짝 돌렸다가 같은 만큼 되돌려서 제자리로 돌아오게 한다 (돌아오기 직전에 실제로 돌았는지 확인)
+            self._jog_back = (motor_id, -delta, now + JOG_HOLD, before, delta)
             self.store.add_history("hw_check", "모터 0x%X를 %+d° 살짝 돌렸다가 되돌립니다" % (motor_id, delta))
             self._start_action("jog", JOG_HOLD * 2 + 0.3)
             return True
@@ -803,8 +848,9 @@ class Controller:
                 self.hw.set_led(GROW_LIGHT_COLOR if self._light_on else LIGHT_OFF)  # 원래 생장등 상태로
 
         if self._jog_back and now >= self._jog_back[2]:
-            motor_id, delta, _ = self._jog_back
+            motor_id, delta, _, before, asked = self._jog_back
             self._jog_back = None
+            self._verify_motion("점검", before, {motor_id: asked})
             try:
                 self.hw.jog_motor(motor_id, delta)
             except Exception as e:

@@ -87,6 +87,7 @@ class Store:
             "model_classes": None,    # 지금 쓰는 모델이 아는 클래스 (없으면 None)
             "camera_real": False,     # 진짜 웹캠인가 (모의 화면이 아닌가)
             "hw": None,               # 하드웨어 구성(모터 목록/역할/방향/ready). 웹의 장치 점검 화면용
+            "motor_fault": None,      # 명령은 갔는데 모터가 안 움직였을 때의 안내 문구 (정상이면 None)
             "hw_error": None,         # 메인 루프 tick이 실패했을 때의 마지막 오류 (정상이면 None)
             "vent_open": False,
             "sprinkler_on": False,
